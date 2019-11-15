@@ -1,6 +1,5 @@
 const {
     override,
-    disableEsLint,
     addDecoratorsLegacy,
     fixBabelImports,
     addLessLoader
@@ -25,7 +24,7 @@ module.exports = override(
         },
     }),
     addWebWorker(),
-    disableEsLint(),
+    // disableEsLint(),
     addDecoratorsLegacy(),
     fixBabelImports("react-app-rewire-mobx", {
         libraryDirectory: "",

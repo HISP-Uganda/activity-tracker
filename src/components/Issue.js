@@ -1,50 +1,60 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { inject, observer } from "mobx-react";
 // import Table from '@dhis2/d2-ui-table';
 import '@dhis2/d2-ui-core/css/Table.css';
-import { Table, Card, Layout, Icon } from "antd";
-import { Link } from '../modules/router'
+import { Table, Card, Button } from "antd";
 
-import views from '../config/views'
-
-const { Header, Content } = Layout;
 
 export const Issue = inject("store")(observer(({ store }) => {
+    const [expandedRowKeys, setExpandedRowKeys] = useState([]);
+    const [modalVisible, setModalVisible] = useState();
+
+    useEffect(() => {
+        store.issueStore.fetchAttributes();
+        store.issueStore.fetchTrackedEntityInstances();
+    }, []);
+
+    const onExpand = (expanded, record) => {
+        if (expanded) {
+            setExpandedRowKeys([record.trackedEntityInstance]);
+        } else {
+            setExpandedRowKeys([])
+        }
+    }
+    const showActionModal = () => {
+        setModalVisible(true)
+    };
     return (
-        <div>
-            <Header style={{ background: '#fff', padding: 0, paddingRight: 5, paddingLeft: 5, display: 'flex' }}>
-                <div style={{ width: 50 }}>
-                    <Icon
-                        className="trigger"
-                        type={store.settings.collapsed ? 'menu-unfold' : 'menu-fold'}
-                        onClick={store.settings.toggle}
-                        style={{ fontSize: 20 }}
-                    />
-                </div>
-                <div>
-                    <Link router={store.router} view={views.objectiveForm}>Create</Link>
-                </div>
-            </Header>
-            <Content style={{ overflow: 'auto', padding: 10 }}>
-                <Card>
+        <Card>
+            <Table
+                style={{ padding: 0 }}
+                columns={store.issueStore.columns}
+                dataSource={store.issueStore.data}
+                rowKey="trackedEntityInstance"
+                loading={store.issueStore.loading}
+                onChange={store.issueStore.handleChange}
+                rowClassName={(record) => record.color}
+                expandedRowKeys={expandedRowKeys}
+                onExpand={onExpand}
+                expandIconAsCell={false}
+                pagination={{
+                    showSizeChanger: true,
+                    total: store.issueStore.total,
+                    // onChange: store.issueStore.onChange,
+                    // onShowSizeChange: store.issueStore.onShowSizeChange,
+                    pageSize: store.issueStore.pageSize,
+                    pageSizeOptions: ['5', '10', '15', '20', '25', '50', '100']
+                }}
+                expandedRowRender={record => <Card title="Issue Actions" extra={<Button onClick={showActionModal} size="large">Add Action</Button>} style={{ marginTop: 16 }}>
                     <Table
-                        style={{ padding: 0 }}
-                        columns={store.issueStore.columns}
-                        dataSource={store.issueStore.data}
-                        rowKey="instance"
-                        loading={store.issueStore.loading}
-                        onChange={store.issueStore.handleChange}
-                        pagination={{
-                            showSizeChanger: true,
-                            total: store.issueStore.total,
-                            // onChange: store.issueStore.onChange,
-                            // onShowSizeChange: store.issueStore.onShowSizeChange,
-                            pageSize: store.issueStore.pageSize,
-                            pageSizeOptions: ['5', '10', '15', '20', '25', '50', '100']
-                        }}
+                        rowKey="event"
+                        columns={store.issueStore.dataElementColumns}
+                        dataSource={record.events}
+                        pagination={false}
                     />
                 </Card>
-            </Content>
-        </div>
+                }
+            />
+        </Card>
     );
 }));

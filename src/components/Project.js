@@ -1,49 +1,34 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { inject, observer } from "mobx-react";
-import { Layout, Icon, Table, Card } from 'antd';
-import { Link } from '../modules/router'
-
-import views from '../config/views'
-
-const { Header, Content } = Layout;
-
+import { Table, Card } from 'antd';
 
 export const Project = inject("store")(observer(({ store }) => {
+    useEffect(() => {
+        async function pull() {
+            await store.projectStore.fetchProgramStages();
+            await store.projectStore.fetchEvents();
+            store.setUrl('/project-form')
+        }
+        pull()
+    }, []);
     return (
-        <div>
-            <Header style={{ background: '#fff', padding: 0, paddingRight: 5, paddingLeft: 5, display: 'flex' }}>
-                <div style={{ width: 50 }}>
-                    <Icon
-                        className="trigger"
-                        type={store.settings.collapsed ? 'menu-unfold' : 'menu-fold'}
-                        onClick={store.settings.toggle}
-                        style={{ fontSize: 20 }}
-                    />
-                </div>
-                <div>
-                    <Link router={store.router} view={views.projectsForm}>Create</Link>
-                </div>
-            </Header>
-            <Content style={{ overflow: 'auto', padding: 10 }}>
-                <Card>
-                    <Table
-                        style={{ padding: 0 }}
-                        columns={store.projectStore.columns}
-                        dataSource={store.projectStore.data}
-                        rowKey="event"
-                    // loading={store.activityStore.loading}
-                    // onChange={store.activityStore.handleChange}
-                    // pagination={{
-                    //     showSizeChanger: true,
-                    //     total: store.activityStore.total,
-                    //     onChange: store.activityStore.onChange,
-                    //     onShowSizeChange: store.activityStore.onShowSizeChange,
-                    //     pageSize: store.activityStore.pageSize,
-                    //     pageSizeOptions: ['5', '10', '15', '20', '25', '50', '100']
-                    // }}
-                    />
-                </Card>
-            </Content>
-        </div>
+        <Card title="Projects">
+            <Table
+                style={{ padding: 0 }}
+                columns={store.projectStore.columns}
+                dataSource={store.projectStore.data}
+                rowKey="event"
+                // loading={store.projectStore.loading}
+                onChange={store.projectStore.handleChange}
+                pagination={{
+                    showSizeChanger: true,
+                    total: store.projectStore.total,
+                    // onChange: store.projectStore.onChange,
+                    // onShowSizeChange: store.projectStore.onShowSizeChange,
+                    pageSize: store.projectStore.pageSize,
+                    pageSizeOptions: ['5', '10', '15', '20', '25', '50', '100']
+                }}
+            />
+        </Card>
     );
 }));

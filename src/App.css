@@ -6,3 +6,41 @@
 .yellow {
   background: greenyellow;
 }
+
+.ql-editor {
+  min-height: 300px;
+  max-height: 300px;
+  overflow-y: scroll;
+  resize: vertical;
+}
+
+progress,
+.pending,
+.approaching,
+.Approaching,
+.Upcoming,
+.Ongoing,
+.Pending {
+  background-color: yellow;
+}
+
+.Implemented {
+  background-color: #dadd98;
+}
+
+.ReportApproved {
+  background-color: #4b6f44;
+}
+
+.ReportSubmitted {
+  background-color: #8a9a5b;
+}
+
+.overdue,
+.Overdue,
+.Rejected,
+.closed,
+.New,
+.Closed {
+  background-color: red;
+}

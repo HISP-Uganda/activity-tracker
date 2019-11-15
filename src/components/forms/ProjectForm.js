@@ -1,71 +1,72 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { inject, observer } from "mobx-react";
-
 import {
-    Form,
-    Input,
-    Layout,
-    Icon,
-    Card,
     Button,
-    Select
-} from "antd";
-import { Link } from '../../modules/router'
-import views from '../../config/views'
+    Card,
+    Form
+} from 'antd';
+import { useHistory } from "react-router-dom";
+
+import * as layouts from './utils'
 
 
-const { Header, Content } = Layout;
-
-const { Option } = Select;
-
+import { displayField } from './forms'
 
 const ProjectF = ({ store, form }) => {
+
+    let history = useHistory();
+
+    const [name, setName] = useState(null)
+    const [code, setCode] = useState(null)
+    const [year, setYear] = useState(null)
     const handleSubmit = e => {
         e.preventDefault();
-        form.validateFieldsAndScroll((err, values) => {
+        form.validateFieldsAndScroll(async (err, values) => {
             if (!err) {
-                store.currentProgram.addProject(values);
-                form.resetFields();
+                values = { ...values, organisationUnits: [store.orgUnit] }
+                const events = await store.projectStore.addProject(values);
+                history.push('/projects')
             }
         });
     };
     const { getFieldDecorator } = form;
+
+    const dummyRequest = async ({ file, onSuccess }) => {
+        const api = store.d2.Api.getApi();
+        var data = new FormData()
+        data.append('file', file)
+        const { response: { fileResource: { id } } } = await api.post('fileResources', data);
+        console.log(id);
+        onSuccess("ok");
+    };
+
+    useEffect(() => {
+        async function pull() {
+            await store.projectStore.fetchProgramStages();
+            setName(store.projectStore.invertedFormColumns['cIfzworL5Kj']);
+            setCode(store.projectStore.invertedFormColumns['UeKCu1x6gC1']);
+            setYear(store.projectStore.invertedFormColumns['TipVshCz31g']);
+        }
+        pull()
+    }, []);
+
     return (
-        <div>
-            <Header style={{ background: '#fff', padding: 0, paddingRight: 5, paddingLeft: 5, display: 'flex' }}>
-                <div style={{ width: 50 }}>
-                    <Icon
-                        className="trigger"
-                        type={store.settings.collapsed ? 'menu-unfold' : 'menu-fold'}
-                        onClick={store.settings.toggle}
-                        style={{ fontSize: 20 }}
-                    />
-                </div>
-                <div>
-                    <Link router={store.router} view={views.activityForm}>Create</Link>
-                </div>
-            </Header>
-            <Content style={{ overflow: 'auto', padding: 10 }}>
-                <Card>
-                    <Form layout={null} onSubmit={handleSubmit}>
-                        {store.currentProgram.columns.map(s => <Form.Item label={s.title} key={s.key}>
-                            {s.isRelationship ? getFieldDecorator(s.key, {
-                                rules: [{ required: true, message: `Please input ${s.title}` }],
-                            })(<Select size="large">
-                                {store.currentProgram.relatedProgram.data.map(d => <Option value={d.event} key={d.event}>{d['UeKCu1x6gC1']} - {d['cIfzworL5Kj']}</Option>)}
-                            </Select>) : getFieldDecorator(s.key, {
-                                rules: [{ required: true, message: `Please input ${s.title}` }],
-                            })(<Input size="large" style={{ width: '100%' }} />)}
-                        </Form.Item>)}
-                        <Form.Item layout={null}>
-                            <Button type="primary" htmlType="submit" size="large">Register</Button>
-                        </Form.Item>
-                    </Form>
-                </Card>
-            </Content>
+        <div style={{ display: 'flex', justifyContent: 'center' }}>
+            <Card style={{ width: '50%' }} title="New Project">
+                <Form {...layouts.formItemLayout} onSubmit={handleSubmit}>
+                    {/* {store.projectStore.formColumns.map(s => displayField(s, store, getFieldDecorator, dummyRequest))} */}
+
+                    {displayField(name, store, getFieldDecorator, dummyRequest)}
+                    {displayField(code, store, getFieldDecorator, dummyRequest)}
+                    {displayField(year, store, getFieldDecorator, dummyRequest)}
+
+                    <Form.Item {...layouts.tailFormItemLayout}>
+                        <Button type="primary" htmlType="submit" size="large">Register</Button>
+                    </Form.Item>
+                </Form>
+            </Card>
         </div>
     );
-}
+};
 
 export const ProjectForm = Form.create({ name: 'register' })(inject("store")(observer(ProjectF)));
-

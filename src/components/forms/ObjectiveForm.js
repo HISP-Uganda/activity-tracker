@@ -1,80 +1,103 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { inject, observer } from "mobx-react";
-
 import {
-    Form,
-    Input,
-    Layout,
-    Icon,
+    Button,
     Card,
-    Button
-} from "antd";
-import { Link } from '../../modules/router'
-import views from '../../config/views'
+    Form,
+    AutoComplete,
+    Input
+} from 'antd';
+import { useHistory } from "react-router-dom";
+import { displayField } from './forms';
+
+const { Option: AutoOption } = AutoComplete
 
 
-const { Header, Content } = Layout;
+const ProjectF = ({ store, form }) => {
+    let history = useHistory();
 
-
-
-const ObjectiveF = ({ store, form }) => {
+    const [name, setName] = useState(null)
+    const [code, setCode] = useState(null)
     const handleSubmit = e => {
         e.preventDefault();
-        form.validateFieldsAndScroll((err, values) => {
-            store.projectStore.addProject(values);
-            // if (!err) {
-            //     store.projectStore.addProject(values);
-            //     store.projectStore.closeModal();
-            //     form.resetFields();
-            // }
+        form.validateFieldsAndScroll(async (err, values) => {
+            if (!err) {
+                const { M2dzx5RlDyU, ...rest } = values;
+                const events = await store.objectiveStore.addProject({ ...rest, organisationUnits: [store.orgUnit] });
+                await store.objectiveStore.addEventRelationShip(events, M2dzx5RlDyU, 'M2dzx5RlDyU');
+                history.push('/objectives')
+            }
         });
     };
     const { getFieldDecorator } = form;
+
+
+    const renderOption = (item) => {
+        return (
+            <AutoOption key={item.event} value={item.event}>
+                {item.name}
+            </AutoOption>
+        );
+    };
+
+
+    const onSelect = (x, { props: { value, children } }) => {
+        form.setFieldsValue({
+            'fWpwKdGRp9r': children,
+        });
+    }
+
+    const dummyRequest = async ({ file, onSuccess }) => {
+        const api = store.d2.Api.getApi();
+        var data = new FormData()
+        data.append('file', file)
+        const { response: { fileResource: { id } } } = await api.post('fileResources', data);
+        console.log(id);
+        onSuccess("ok");
+    };
+
+    useEffect(() => {
+        async function pull() {
+            await store.objectiveStore.fetchProgramStages();
+            setName(store.objectiveStore.invertedFormColumns['cIfzworL5Kj']);
+            setCode(store.objectiveStore.invertedFormColumns['UeKCu1x6gC1']);
+        }
+        pull()
+    }, []);
+
     return (
-        <div>
-            <Header style={{ background: '#fff', padding: 0, paddingRight: 5, paddingLeft: 5, display: 'flex' }}>
-                <div style={{ width: 50 }}>
-                    <Icon
-                        className="trigger"
-                        type={store.settings.collapsed ? 'menu-unfold' : 'menu-fold'}
-                        onClick={store.settings.toggle}
-                        style={{ fontSize: 20 }}
-                    />
-                </div>
-                <div>
-                    <Link router={store.router} view={views.activityForm}>Create</Link>
-                </div>
-            </Header>
-            <Content style={{ overflow: 'auto', padding: 10 }}>
-                <Card>
-                    <Form layout={null} onSubmit={handleSubmit}>
-                        <Form.Item label="Project Code">
-                            {getFieldDecorator('UeKCu1x6gC1', {
-                                rules: [{ required: true, message: 'Please input project code' }],
-                            })(<Input size="large" style={{ width: '100%' }} />)}
-                        </Form.Item>
+        <div style={{ display: 'flex', justifyContent: 'center' }}>
+            <Card style={{ width: '50%' }}>
+                <Form layout={null} onSubmit={handleSubmit}>
+                    {/* {store.objectiveStore.formColumns.map(s => displayField(s, store, getFieldDecorator, dummyRequest))} */}
+                    {displayField(name, store, getFieldDecorator, dummyRequest)}
+                    {displayField(code, store, getFieldDecorator, dummyRequest)}
+                    <Form.Item label={store.objectiveStore.project.fromToName} key={store.objectiveStore.project.id}>
+                        {getFieldDecorator(store.objectiveStore.project.id, {
+                            rules: [{ required: true, message: `Please input Activity` }],
+                        })(<AutoComplete
+                            size="large"
+                            dataSource={store.objectiveStore.project.events.map(renderOption)}
+                            style={{ width: '100%' }}
+                            onSearch={store.objectiveStore.project.searchEvents}
+                            placeholder="Type something to get suggestions"
+                            onSelect={onSelect}
+                        />)}
+                    </Form.Item>
+                    <Form.Item label="Related" style={{ display: 'none' }}>
+                        {getFieldDecorator('fWpwKdGRp9r', {
+                            rules: [{ required: false, message: `Please input Activity` }],
+                        })(<Input size="large" style={{ width: '100%' }} />)}
+                    </Form.Item>
+                    <Form.Item layout={null}>
+                        <Button type="primary" htmlType="submit" size="large">Register</Button>
+                    </Form.Item>
 
-                        <Form.Item label="Project Name">
-                            {getFieldDecorator('cIfzworL5Kj', {
-                                rules: [{ required: true, message: 'Please input project name' }],
-                            })(<Input size="large" style={{ width: '100%' }} />)}
-                        </Form.Item>
-
-                        <Form.Item label="Project Year">
-                            {getFieldDecorator('TipVshCz31g', {
-                                rules: [{ required: true, message: 'Please input project year' }],
-                            })(<Input size="large" style={{ width: '100%' }} />)}
-                        </Form.Item>
-
-                        <Form.Item layout={null}>
-                            <Button type="primary" htmlType="submit">Register</Button>
-                        </Form.Item>
-                    </Form>
-                </Card>
-            </Content>
+                </Form>
+            </Card>
         </div>
     );
-}
+};
 
-export const ObjectiveForm = Form.create({ name: 'register' })(inject("store")(observer(ObjectiveF)));
+export const ObjectiveForm = Form.create({ name: 'register' })(inject("store")(observer(ProjectF)));
 

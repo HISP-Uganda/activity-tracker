@@ -1,20 +1,11 @@
 import React from 'react';
 import ReactDOM from 'react-dom';
-import { RouterStore, startRouter } from './modules/router';
-
-//mobx
 import { Provider } from 'mobx-react';
-import { Store } from './store/Store';
-
-//router
-import views from './config/views';
+import store from './store/Store';
 
 import App from './App';
-import * as serviceWorker from './serviceWorker';
 import { init } from 'd2';
 import Loading from './components/Loading'
-
-
 const config = {};
 if (process.env.NODE_ENV === 'development') {
     config.baseUrl = `http://localhost:8080/api`; // Baylor
@@ -33,7 +24,10 @@ if (process.env.NODE_ENV === 'development') {
 }
 
 ReactDOM.render(<Loading />, document.getElementById('root'));
-init(config).then(d2 => {
+
+const initialize = async () => {
+    const d2 = await init(config);
+    console.log(d2);
     d2.i18n.translations['id'] = 'Id';
     d2.i18n.translations['program_name'] = 'Program Name';
     d2.i18n.translations['program_type'] = 'Program Type';
@@ -55,62 +49,38 @@ init(config).then(d2 => {
     d2.i18n.translations['log_out'] = 'Logout';
     d2.i18n.translations['help'] = 'Help';
     d2.i18n.translations['about_dhis2'] = 'About DHIS2';
-    d2.i18n.translations['aggregate_id'] = 'Id';
-    d2.i18n.translations['upload'] = 'Upload';
-    d2.i18n.translations['code'] = 'Code';
-    d2.i18n.translations['download'] = 'Import from API';
-    d2.i18n.translations['template'] = 'Download Mapping';
-    d2.i18n.translations['year'] = 'Year';
-    d2.i18n.translations['sixMonth'] = 'Six Month';
-    d2.i18n.translations['jan-jun'] = 'Jan - Jun';
-    d2.i18n.translations['jul-dec'] = 'Jul - Dec';
-
-    d2.i18n.translations['assign_all'] = 'Assign all';
-    d2.i18n.translations['hidden_by_filters'] = 'Hidden by filters';
-    d2.i18n.translations['day'] = 'Day';
-
-    d2.i18n.translations['year'] = 'Year';
-    d2.i18n.translations['week'] = 'Week';
-    d2.i18n.translations['day'] = 'Day';
-    d2.i18n.translations['month'] = 'Month';
-    d2.i18n.translations['quarter'] = 'Quarter';
-    d2.i18n.translations['jan'] = 'January';
-    d2.i18n.translations['feb'] = 'February';
-    d2.i18n.translations['mar'] = 'March';
-    d2.i18n.translations['apr'] = 'April';
-    d2.i18n.translations['may'] = 'May';
-    d2.i18n.translations['jun'] = 'June';
-    d2.i18n.translations['jul'] = 'July';
-    d2.i18n.translations['aug'] = 'August';
-    d2.i18n.translations['sep'] = 'September';
-    d2.i18n.translations['oct'] = 'October';
-    d2.i18n.translations['nov'] = 'November';
-    d2.i18n.translations['dec'] = 'December';
-    d2.i18n.translations['Q1'] = 'Q1';
-    d2.i18n.translations['Q2'] = 'Q2';
-    d2.i18n.translations['Q3'] = 'Q3';
-    d2.i18n.translations['Q4'] = 'Q4';
-    d2.i18n.translations['mapping_name'] = 'Mapping Name';
-    d2.i18n.translations['mapping_description'] = 'Mapping Description';
-    d2.i18n.translations['last'] = 'Last Run';
-    d2.i18n.translations['next'] = 'Next Run';
-    d2.i18n.translations['created'] = 'Created';
-
-    const store = Store.create({
-        router: RouterStore.create({
-            views: views
-        })
-    });
     store.setD2(d2);
-    store.fetchUnits();
-    store.loadOrgUnitGroups();
-    store.loadOrgUnitLevels();
-    startRouter(store.router);
+
+    await store.fetchUnits();
+    await store.loadOrgUnitGroups();
+    await store.loadOrgUnitLevels();
+    await store.fetchRelationships();
+
+    store.resultAreaStore.setRelatedProgram(store.objectiveStore);
+    store.objectiveStore.setRelatedProgram(store.projectStore);
+    store.activityDataStore.setRelatedProgram(store.resultAreaStore);
+    store.outputStore.setRelatedProgram(store.projectStore);
+    store.activityStore.setRelatedProgram(store.activityDataStore);
+
     ReactDOM.render(<Provider store={store}>
         <App d2={d2} />
     </Provider>, document.getElementById('root'));
-    serviceWorker.unregister();
-}).catch(e => console.error);
+
+}
+initialize().then(d2 => {
+    console.log('finished')
+}).catch(e => ReactDOM.render(<div style={{
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'column',
+    width: '100vw',
+    height: '100vh',
+    fontSize: 28
+}}>
+    {JSON.stringify(e)}
+</div>, document.getElementById('root'))
+);
 
 
 

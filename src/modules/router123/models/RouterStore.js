@@ -8,7 +8,8 @@ const RouterStore = types
     currentView: types.maybe(types.reference(View)),
     params: types.frozen(),
     props: types.frozen(),
-    isLoading: false
+    isLoading: false,
+    store: types.frozen()
   })
   .views(self => ({
     get root() {
@@ -47,6 +48,10 @@ const RouterStore = types
       setLoading(isLoading) {
         self.isLoading = isLoading;
       },
+
+      setStore(store) {
+        self.store = store;
+      },
       setView: flow(function* (view, params) {
         const thisSetView = {
           key: view.formatUrl(params),
@@ -66,7 +71,7 @@ const RouterStore = types
           while (_queuedSetView) {
             yield new Promise(_spinWait);
           }
-          
+
           // check that this is still the setView to process
           if (_runningSetView.key !== thisSetView.key) {
             return;
@@ -77,7 +82,7 @@ const RouterStore = types
 
         // save a snapshot to rollback to if something goes wrong
         const rootSnapshot = getSnapshot(self.root);
-        
+
         const rollback = () => {
           applySnapshot(self.root, rootSnapshot);
 
@@ -94,7 +99,7 @@ const RouterStore = types
         // before exit old view
         const oldView = self.currentView;
         const oldParams = self.params;
-        
+
         if (oldView && oldView.beforeExit) {
           if ((yield oldView.beforeExit(oldParams)) === false) {
             return rollback();
@@ -103,7 +108,7 @@ const RouterStore = types
 
         // check if route has been changed
         if (_queuedSetView) return rollback();
-        
+
         // block out page for loading
         self.setLoading(true);
 
@@ -137,7 +142,7 @@ const RouterStore = types
         if (view.onEnter) {
           yield view.onEnter(params);
         }
-        
+
         // check if route has been changed
         if (_queuedSetView) return;
 
