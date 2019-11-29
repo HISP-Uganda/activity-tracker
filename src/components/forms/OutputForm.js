@@ -1,55 +1,56 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { inject, observer } from "mobx-react";
 import {
     Button,
     Card,
-    Form
+    Form,
+    Layout,
+    Icon
 } from 'antd';
-import { useHistory } from "react-router-dom";
 
-import { displayField } from './forms'
+import * as layouts from './utils';
+
+import { Link } from '../../modules/router';
+import views from '../../config/views';
+import { displayField } from './forms';
+
+const { Header, Content } = Layout;
 
 const ProjectF = ({ store, form }) => {
-    let history = useHistory();
-
     const handleSubmit = e => {
         e.preventDefault();
         form.validateFieldsAndScroll(async (err, values) => {
             if (!err) {
-                values = { ...values, organisationUnits: [store.orgUnit] }
-                await store.outputStore.addProject(values);
-                history.push('/outputs')
+                await store.output.addEvent({ ...values, programStage: 'sa3MHm3wboi', organisationUnits: [store.orgUnit] });
             }
         });
     };
     const { getFieldDecorator } = form;
-
-    const dummyRequest = async ({ file, onSuccess }) => {
-        const api = store.d2.Api.getApi();
-        var data = new FormData()
-        data.append('file', file)
-        const { response: { fileResource: { id } } } = await api.post('fileResources', data);
-        console.log(id);
-        onSuccess("ok");
-    };
-
-    useEffect(() => {
-        async function pull() {
-            await store.outputStore.fetchProgramStages();
-        }
-        pull()
-    }, []);
-
     return (
-        <div style={{ display: 'flex', justifyContent: 'center' }}>
-            <Card style={{ width: '50%' }}>
-                <Form layout={null} onSubmit={handleSubmit}>
-                    {store.outputStore.formColumns.map(s => displayField(s, store, getFieldDecorator, dummyRequest))}
-                    <Form.Item layout={null}>
-                        <Button type="primary" htmlType="submit" size="large">Register</Button>
-                    </Form.Item>
-                </Form>
-            </Card>
+        <div>
+            <Header style={{ background: '#fff', padding: 0, paddingRight: 5, paddingLeft: 5, display: 'flex' }}>
+                <div style={{ width: 50 }}>
+                    <Icon
+                        className="trigger"
+                        type={store.settings.collapsed ? 'menu-unfold' : 'menu-fold'}
+                        onClick={store.settings.toggle}
+                        style={{ fontSize: 20 }}
+                    />
+                </div>
+                <div>
+                    <Link router={store.router} view={views.resultAreas}>Objectives</Link>
+                </div>
+            </Header>
+            <Content style={{ overflow: 'auto', padding: 10 }}>
+                <Card title="New Objective">
+                    <Form  {...layouts.formItemLayout} onSubmit={handleSubmit}>
+                        {store.output.eventForms['sa3MHm3wboi'] ? store.output.eventForms['sa3MHm3wboi'].map(s => displayField(s, getFieldDecorator)) : null}
+                        <Form.Item {...layouts.tailFormItemLayout}>
+                            <Button type="primary" htmlType="submit" size="large">Register</Button>
+                        </Form.Item>
+                    </Form>
+                </Card>
+            </Content>
         </div>
     );
 };

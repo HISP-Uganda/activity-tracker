@@ -1,16 +1,16 @@
-import { ActivityForm } from './ActivityForm';
+import { PlannedActivityForm } from './PlannedActivityForm';
 import { OutputForm } from './OutputForm';
 import { ResultAreaForm } from './ResultAreaForm';
 import { ObjectiveForm } from './ObjectiveForm';
 import { ProjectForm } from './ProjectForm';
-import { ActivityDataForm } from './ActivityDataForm';
+import { ActivityForm } from './ActivityForm';
 
 
 export {
-    ActivityDataForm,
+    ActivityForm,
     ObjectiveForm,
     OutputForm,
     ResultAreaForm,
-    ActivityForm,
+    PlannedActivityForm,
     ProjectForm
 }

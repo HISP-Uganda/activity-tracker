@@ -12,6 +12,8 @@ import {
     Drawer
 } from "antd";
 
+import * as layouts from './utils';
+
 const { Option } = Select;
 const { TextArea } = Input;
 const { Option: AutoOption } = AutoComplete;
@@ -128,9 +130,9 @@ const DrawerF = ({ store, form, visible, onSubmit, onClose, formColumns }) => {
             onClose={close}
             style={{ marginTop: 48 }}
         >
-            <Form layout={null} onSubmit={handleSubmit}>
+            <Form {...layouts.formItemLayout} onSubmit={handleSubmit}>
                 {formColumns.map(s => displayField(s))}
-                <Form.Item layout={null}>
+                <Form.Item {...layouts.tailFormItemLayout}>
                     <Button size="large" type="primary" htmlType="submit">Register</Button>
                 </Form.Item>
             </Form>

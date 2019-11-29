@@ -1,14 +1,14 @@
 {
   "version":"1.0",
-  "name":"baylor",
-  "description":"Issue Tracker",
+  "name":"Activity Tracker",
+  "description":"Activity Tracker",
   "icons":{
     "16":"baylor-16.png",
     "48":"baylor-48.png",
     "128":"baylor-128.png"
   },
   "developer":{
-    "url":"http://www.nrc.no",
+    "url":"https://www.hispuganda.org",
     "name":"HISP Uganda",
     "company":"",
     "email":""

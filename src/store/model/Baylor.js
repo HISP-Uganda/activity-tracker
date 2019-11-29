@@ -1,9 +1,10 @@
-import { flow, getParent, types, getRoot } from "mobx-state-tree";
-import { fromPairs } from 'lodash'
-import React from 'react'
-import { Menu, Icon, Dropdown } from "antd";
+import { types, flow, getRoot, getParent } from "mobx-state-tree";
+import React from 'react';
+import { unionBy, fromPairs, flatten, groupBy } from 'lodash';
+import moment from 'moment';
+
+import { Icon, Menu, Dropdown, Button } from 'antd';
 import views from '../../config/views'
-import { Link } from '../../modules/router'
 
 export const Attribute = types.model("Attribute", {
     attribute: types.string,
@@ -19,6 +20,14 @@ export const OptionSet = types.model("OptionSet", {
     options: types.array(Option)
 });
 
+export const DataElement = types.model("DataElement", {
+    id: types.string,
+    name: types.string,
+    optionSet: types.maybeNull(OptionSet),
+    valueType: types.string
+});
+
+
 export const TrackedEntityAttribute = types
     .model("TrackedEntityAttributes", {
         id: types.identifier,
@@ -33,118 +42,6 @@ export const ProgramTrackedEntityAttributes = types.model("ProgramTrackedEntityA
     mandatory: false
 });
 
-export const DataValue = types.model("DataValue", {
-    value: types.string,
-    dataElement: types.string,
-});
-
-export const Constraint = types.model('Constraint', {
-    relationshipEntity: types.string,
-    program: types.frozen()
-})
-
-export const RelationshipType = types.model('RelationshipType', {
-    id: types.identifier,
-    name: types.string,
-    bidirectional: false,
-    toFromName: '',
-    fromToName: '',
-    fromConstraint: Constraint,
-    toConstraint: Constraint
-
-})
-
-export const Event = types.model("Event", {
-    event: types.identifier,
-    orgUnit: types.string,
-    program: types.string,
-    dataValues: types.array(DataValue),
-    relationships: types.optional(types.array(TrackedEntityInstance), []),
-    relatedTracker: types.maybe(types.reference(types.late(() => TrackedEntityInstanceStore))),
-    relationshipType: '',
-
-}).views(self => ({
-    get relatedEntities() {
-        const data = self.relationships.filter(r => {
-            return r.to.trackedEntityInstance
-        }).map(r => {
-            const { to: { trackedEntityInstance } } = r
-            const { attributes, ...rest } = trackedEntityInstance
-            const cols = fromPairs(attributes.map(a => {
-                return [a.attribute, a.value]
-            }));
-
-            return { ...cols, ...rest }
-        });
-        return data;
-    }
-})).actions(self => {
-    const fetchRelationShips = flow(function* () {
-        const api = getRoot(self).d2.Api.getApi();
-        self.loading = true;
-        try {
-            const relationships = yield api.get('relationships.json', { event: self.event });
-            console.log(relationships);
-            self.relationships = relationships;
-        } catch (error) {
-            console.error("Failed to fetch projects", error);
-            self.state = "error"
-        }
-        self.loading = false;
-    });
-
-    const addRelationShip = flow(function* (to) {
-        const api = getRoot(self).d2.Api.getApi();
-        self.loading = true;
-
-        const payload = {
-            relationshipType: self.relationshipType,
-            from: {
-                event: {
-                    event: self.event
-                }
-            },
-            to
-        }
-        try {
-            yield api.post('relationships', payload);
-
-        } catch (error) {
-            console.error("Failed to fetch projects", error);
-            self.state = "error"
-        }
-        self.loading = false;
-    });
-
-    const setRelatedTracker = (tracker) => self.relatedTracker = tracker;
-    const setRelationshipType = (relationshipType) => self.relationshipType = relationshipType;
-
-    return {
-        fetchRelationShips,
-        setRelatedTracker,
-        addRelationShip,
-        setRelationshipType
-    }
-});
-
-
-export const Enrollment = types.model("Enrollment", {
-    enrollment: types.string,
-    orgUnit: types.string,
-    program: types.string,
-    enrollmentDate: types.string,
-    incidentDate: types.string,
-    created: types.string,
-    trackedEntityType: types.string,
-    events: types.array(Event)
-});
-
-export const DataElement = types.model("DataElement", {
-    id: types.string,
-    name: types.string,
-    optionSet: types.maybeNull(OptionSet),
-    valueType: types.string
-});
 
 export const ProgramStageDataElement = types.model("ProgramStageDataElement", {
     id: types.string,
@@ -152,114 +49,357 @@ export const ProgramStageDataElement = types.model("ProgramStageDataElement", {
     dataElement: DataElement
 });
 
-export const ProgramStage = types.model('ProgramStage', {
-    id: types.string,
+export const Header = types.model("Header", {
     name: types.string,
-    programStageDataElements: types.array(ProgramStageDataElement)
-})
-export const EventStore = types.model("EventStore", {
-    events: types.optional(types.array(Event), []),
-    program: types.identifier,
+    column: types.string,
+    type: types.string,
+    hidden: types.boolean,
+    meta: types.boolean,
+});
+
+export const Row = types.model('Row', {
+    data: types.array(types.string),
+    event: types.optional(types.frozen(), {})
+}).views(self => ({
+    get getAttributes() {
+        const program = getParent(self, 2);
+        const data = program.programTrackedEntityAttributes.map(a => {
+
+            const deIndex = program.headers.findIndex((x) => {
+                return x.name === a.trackedEntityAttribute.id
+            });
+
+            let value = null;
+
+            if (deIndex !== -1) {
+                value = self.data[deIndex];
+            }
+            return [a.trackedEntityAttribute.id, value];
+        });
+
+        let attributes = fromPairs(data);
+
+        const ouIndex = program.headers.findIndex((x) => {
+            return x.name === 'ou'
+        });
+        return { ...attributes, organisationUnits: [self.data[ouIndex]], trackedEntityInstance: self.data[0] }
+    },
+
+    get programStageData() {
+        const enrollment = self.event.enrollments[0];
+        return groupBy(enrollment.events, 'programStage');
+    },
+
+    get previousReport() {
+        const events = self.programStageData['gCp6ffVmx0g']
+        if (events) {
+            const e = events[0].dataValues.map(e => [e.dataElement, e.value]);
+            return fromPairs(e);
+        }
+        return {}
+    },
+
+    get issues() {
+        const events = self.programStageData['qky1qGVPe7e'] || [];
+        return events.map(({ dataValues, ...e }) => {
+            const dv = dataValues.map(d => [d.dataElement, d.value]);
+            return { ...e, ...fromPairs(dv) }
+        })
+    },
+
+    get currentIssueNumbers() {
+        return self.issues.map(i => {
+            return { code: i['fdlUSNSkcO5'], name: i['fdlUSNSkcO5'] };
+        }).filter(i => !!i);
+    },
+    get actions() {
+        const events = self.programStageData['eXOOIxW2cAZ'] || [];
+        return events.map(({ dataValues, ...e }) => {
+            const dv = dataValues.map(d => [d.dataElement, d.value]);
+            return { ...e, ...fromPairs(dv) }
+        })
+    },
+
+    get getData() {
+        const store = getRoot(self);
+        const data = store.plannedActivity.programTrackedEntityAttributes.map(a => {
+
+            const deIndex = store.plannedActivity.headers.findIndex((x) => {
+                return x.name === a.trackedEntityAttribute.id
+            });
+
+            let value = null;
+
+            if (deIndex !== -1) {
+                value = self.data[deIndex];
+            }
+            return [a.trackedEntityAttribute.id, value];
+        });
+
+        return fromPairs(data);
+    },
+    get activityStatusIndex() {
+        const store = getRoot(self);
+        return store.plannedActivity.headers.findIndex((x) => {
+            return x.name === 'GeIEoCBrKaW'
+        });
+
+    },
+    get activityStatus() {
+        if (self.activityStatusIndex !== -1 && self.data.length > 1) {
+            return self.data[self.activityStatusIndex]
+        } else if (self.event.attributes) {
+            const status = self.event.attributes.find(a => a.attribute === 'GeIEoCBrKaW');
+            if (status) {
+                return status.value;
+            }
+        }
+        return null
+    },
+    get plannedStartDate() {
+        const program = getParent(self, 2);
+        const index = program.headers.findIndex((x) => {
+            return x.name === 'eN9jthkmMds'
+        });
+        if (index !== -1) {
+            return moment(self.data[index])
+        }
+        return null
+    },
+    get currentStatus() {
+        let canImplement = false;
+        const today = moment();
+        let cls = '';
+
+        if (self.activityStatus === 'On Schedule' && self.plannedStartDate && self.plannedStartDate.diff(today, 'days') <= 0) {
+            cls = 'Overdue';
+        } else if (self.activityStatus === 'On Schedule' && self.plannedStartDate && self.plannedStartDate.diff(today, 'days') <= 7) {
+            cls = 'Upcoming';
+        }
+        else if (self.activityStatus === 'On Schedule' && self.plannedStartDate && self.plannedStartDate.diff(today, 'days') > 7) {
+            cls = 'OnSchedule';
+        } else if (self.activityStatus === 'Report Submitted') {
+            cls = 'ReportSubmitted';
+        } else if (self.activityStatus === 'Report Approved') {
+            cls = 'ReportApproved';
+        } else if (self.activityStatus === 'Ongoing') {
+            cls = 'Ongoing';
+        } else if (self.activityStatus === 'Implemented') {
+            cls = 'Implemented';
+        } else if (self.activityStatus === 'Upcoming') {
+            cls = 'Upcoming';
+        } else if (self.plannedStartDate && self.plannedStartDate.diff(today, 'days') <= 0) {
+            cls = 'Overdue';
+        } else if (self.plannedStartDate && self.plannedStartDate.diff(today, 'days') <= 7) {
+            cls = 'Upcoming';
+        } else if (self.plannedStartDate && self.plannedStartDate.diff(today, 'days') > 7) {
+            cls = 'OnSchedule';
+        }
+
+        if (self.activityStatus === 'Overdue' || self.activityStatus === 'Upcoming' || self.activityStatus === 'On Schedule' || !self.activityStatus) {
+            canImplement = true;
+        }
+        return {
+            canImplement,
+            cls
+        }
+    },
+    get disableSubmit() {
+        return self.activityStatus === 'Report Approved'
+    },
+    get canFinishImplementing() {
+        return self.activityStatus === 'Ongoing'
+    },
+    get canAddReport() {
+        return self.activityStatus === 'Implemented'
+    },
+    get canViewAndEditReport() {
+        return self.activityStatus === 'Report Submitted'
+    },
+    get download() {
+        const store = getRoot(self);
+        const api = store.d2.Api.getApi();
+        const url = api.baseUrl;
+        if (store.report.rows.length > 0) {
+            return `${url}/events/files?eventUid=${store.report.rows[0].data[0]}&dataElementUid=yxGmEyvPfwl`
+        }
+        return '';
+    }
+})).actions(self => ({
+    afterCreate: flow(function* () {
+        // yield self.fetchEvents()
+    }),
+    updateActivityStatus: flow(function* (status) {
+        if (self.activityStatusIndex !== -1) {
+            self.data[self.activityStatusIndex] = status;
+            const program = getParent(self, 2);
+            yield program.updateTrackedEntityInstance(self.getAttributes);
+            yield program.refresh()
+        }
+    }),
+    fetchEvents: flow(function* () {
+        const store = getRoot(self);
+        const api = store.d2.Api.getApi();
+        const event = yield api.get(`trackedEntityInstances/${self.data[0]}`, {
+            fields: '*',
+            program: store.plannedActivity.id
+        });
+
+        self.event = event;
+    }),
+}));
+
+export const ProgramStage = types.model('ProgramStage', {
+    id: '',
     page: 1,
-    pageSize: 10,
+    pageSize: 5,
     total: 0,
     sorter: 'created:desc',
-    programStages: types.array(ProgramStage),
-    relatedProgram: types.maybe(types.reference(types.late(() => EventStore))),
+    headers: types.array(Header),
+    rows: types.optional(types.array(Row), []),
+    programStageDataElements: types.array(ProgramStageDataElement),
+    related: types.maybe(types.late(() => ProgramStage)),
+    hidden: types.optional(types.array(types.string), []),
     instance: '',
-    relatedDataElement: '',
-    currentEvent: types.maybe(Event),
+    row: types.optional(Row, {})
 }).views(self => ({
-    get store() {
-        return getParent(self)
+    get nameAndCodeColumn() {
+        const codeIndex = self.headers.findIndex((x) => {
+            return x.name === 'UeKCu1x6gC1'
+        });
+        const nameIndex = self.headers.findIndex((x) => {
+            return x.name === 'cIfzworL5Kj'
+        });
+
+        if (codeIndex !== -1 && nameIndex !== -1) {
+            return { nameIndex, codeIndex }
+        }
+
+        return {}
+    },
+    get getData() {
+        // const store = getRoot(self);
+        const data = self.programStageDataElements.map(a => {
+            const deIndex = self.headers.findIndex((x) => {
+                return x.name === a.dataElement.id
+            });
+
+            let value = null;
+
+            if (deIndex !== -1) {
+                // console.log(JSON.stringify(self.rows));
+                // value = self.rows.data[deIndex];
+            }
+            return [a.dataElement.id, value];
+        });
+
+        return fromPairs(data);
+
     },
     get columns() {
-        const programStage = self.programStages[0];
-        const defaultColumns = programStage.programStageDataElements.map(de => {
-            return {
-                title: de.dataElement.name,
-                dataIndex: de.dataElement.id,
-                key: de.dataElement.id,
-                isRelationship: de.dataElement.id === self.relatedDataElement
-            }
-        });
-
-        return [...defaultColumns, {
-            title: 'Actions',
-            render: (text, record) => {
-                const menu = (
-                    <Menu>
-                        <Menu.Item key="1" onClick={() => self.store.router.setView(views.events, { event: record.event })}>
-                            {/* <Link router={self.store.router} view={views.activity} params={{ activity: record.instance }}> */}
-                            <Icon type="user" />
-                            1st menu item
-                                {/* </Link> */}
-                        </Menu.Item>
-                        <Menu.Item key="2">
-                            <Link router={self.store.router} view={views.activities}>
-                                <Icon type="user" />
-                                <Icon type="user" />
-                                2nd menu item
-                                </Link>
-                        </Menu.Item>
-                        <Menu.Item key="3">
-                            <Link router={self.store.router} view={views.activities}>
-                                <Icon type="user" />
-                                <Icon type="user" />
-                                3rd item
-                                </Link>
-                        </Menu.Item>
-                    </Menu>
-                )
-                return <Dropdown overlay={menu}>
-                    <Icon type="more" style={{ fontSize: '24px' }} />
-                </Dropdown>
-            }
-        }]
-    },
-    get data() {
-        return self.events.map(event => {
-            let { dataValues, ...rest } = event
-            dataValues = dataValues.map(d => {
-                return [d.dataElement, d.value]
+        if (self.headers.length > 0 && self.rows.length > 0) {
+            const columns = self.programStageDataElements.map(a => {
+                return a.dataElement.id
+            });
+            let cols = self.headers.map((a, i) => {
+                return {
+                    key: a.name,
+                    title: a.column,
+                    dataIndex: a.name,
+                    render: (text, row) => {
+                        if (a.name === 'GeIEoCBrKaW') {
+                            return {
+                                props: {
+                                    className: row.currentStatus.cls,
+                                },
+                                children: <div>{row.data[i] || row.currentStatus.cls}</div>,
+                            };
+                        }
+                        return <div>{row.data[i]}</div>
+                    }
+                }
+            }).filter(h => {
+                return columns.indexOf(h.key) !== -1
             });
 
-            return { ...rest, ...fromPairs(dataValues) };
-        });
+            if (self.id === 'qky1qGVPe7e') {
+                cols = cols.filter(c => {
+                    return ['fdlUSNSkcO5', 'POFNc2t3zCO'].indexOf(c.key) !== -1
+                })
+            } else if (self.id === 'eXOOIxW2cAZ') {
+                cols = cols.filter(c => {
+                    return ['fdlUSNSkcO5', 'HF1r9NG0jNT'].indexOf(c.key) !== -1
+                })
+            }
 
+            return cols;
+        } else {
+            let cols = self.programStageDataElements.map(a => {
+                return {
+                    key: a.dataElement.id,
+                    title: a.dataElement.name,
+                    dataIndex: a.dataElement.id,
+                    render: (text) => {
+                        return <div>{text}</div>
+                    }
+                }
+            });
+
+
+            if (self.id === 'qky1qGVPe7e') {
+                cols = cols.filter(c => {
+                    return ['fdlUSNSkcO5', 'POFNc2t3zCO'].indexOf(c.key) !== -1
+                })
+            } else if (self.id === 'eXOOIxW2cAZ') {
+                cols = cols.filter(c => {
+                    return ['fdlUSNSkcO5', 'HF1r9NG0jNT'].indexOf(c.key) !== -1
+                })
+            }
+
+            return cols
+
+        }
     },
-    get formColumns() {
-        const programStage = self.programStages[0];
-        const columns = programStage.programStageDataElements.map(a => {
-            const { compulsory: mandatory, dataElement: { valueType } } = a;
-            return {
-                title: a.dataElement.name,
-                dataIndex: a.dataElement.id,
-                key: a.dataElement.id,
-                mandatory,
-                valueType: a.dataElement.id === 'lX4Ae98tFFl' ? 'HTML' : valueType,
-                isRelationship: a.dataElement.id === self.relatedDataElement,
-                optionSet: a.dataElement.optionSet
+    get form() {
+        const store = getRoot(self)
+        return self.programStageDataElements.map(de => {
+            const { compulsory: mandatory, dataElement: { valueType } } = de;
+            const hidden = self.hidden.indexOf(de.dataElement.id) !== -1;
+            if (self.id === 'eXOOIxW2cAZ' && de.dataElement.id === 'fdlUSNSkcO5' && store.currentRow && store.currentRow.currentIssueNumbers) {
+                return {
+                    title: de.dataElement.name,
+                    dataIndex: de.dataElement.id,
+                    key: de.dataElement.id,
+                    mandatory,
+                    valueType,
+                    hidden,
+                    optionSet: { options: store.currentRow.currentIssueNumbers }
+                }
+            } else {
+                return {
+                    title: de.dataElement.name,
+                    dataIndex: de.dataElement.id,
+                    key: de.dataElement.id,
+                    mandatory,
+                    valueType,
+                    hidden,
+                    optionSet: de.dataElement.optionSet
+                }
             }
         });
-
-        return [...columns, {
-            key: 'assignedUser',
-            title: 'Assigned to',
-            mandatory: true,
-            valueType: '',
-            optionSet: null,
-            searchUsers: true
-        }]
     }
 })).actions(self => {
-    const fetchProgramStages = flow(function* () {
+    const afterCreate = flow(function* () {
+        yield self.fetchMetadata();
+        // yield self.fetchEvents();
+    });
+    const fetchMetadata = flow(function* () {
         const api = getRoot(self).d2.Api.getApi();
         try {
-            const { programStages } = yield api.get(`programs/${self.program}`, {
-                fields: 'programStages[id,name,programStageDataElements[id,compulsory,dataElement[id,name,valueType,optionSet[options[name,code]]]]]'
+            const { programStageDataElements } = yield api.get(`programStages/${self.id}`, {
+                fields: 'programStageDataElements[id,compulsory,dataElement[id,name,valueType,optionSet[options[name,code]]]]'
             });
-            self.programStages = programStages;
+            self.programStageDataElements = programStageDataElements;
         } catch (error) {
             console.error("Failed to fetch projects", error);
             self.state = "error"
@@ -270,30 +410,54 @@ export const EventStore = types.model("EventStore", {
         const api = getRoot(self).d2.Api.getApi();
         self.loading = true;
 
+        let params = {
+            programStage: self.id,
+            totalPages: true,
+            pageSize: self.pageSize,
+            includeAllDataElements: true,
+            order: self.sorter,
+            ouMode: 'ALL'
+        }
         try {
-            let defaults = {
-                totalPages: true,
-                pageSize: self.pageSize,
-                order: self.sorter,
-                ouMode: 'ALL',
-                fields: '*'
-            }
 
             if (self.instance !== '') {
-                defaults = {
-                    ...defaults,
-                    trackedEntityInstance: self.instance
-                }
-            } else {
-                defaults = {
-                    ...defaults,
-                    program: self.program,
-
-                }
+                params = { ...params, trackedEntityInstance: self.instance }
             }
-            const { events, pager } = yield api.get('events.json', defaults);
+            const { headers, rows, metaData: { pager } } = yield api.get('events/query.json', params);
+            self.headers = headers;
+            self.rows = rows.map(r => {
+                return { data: r }
+            });
             self.total = pager.total;
-            self.events = events
+        } catch (error) {
+            console.error("Failed to fetch projects", error);
+            self.state = "error"
+        }
+        self.loading = false;
+    });
+    const fetchInstanceEvents = flow(function* (trackedEntityInstance) {
+        const api = getRoot(self).d2.Api.getApi();
+        self.loading = true;
+        let params = {
+            programStage: self.id,
+            totalPages: true,
+            pageSize: self.pageSize,
+            trackedEntityInstance,
+            includeAllDataElements: true,
+            order: self.sorter,
+            ouMode: 'ALL'
+        }
+
+        if (self.instance !== '') {
+            params = { ...params, trackedEntityInstance: self.instance }
+        }
+        try {
+            const { headers, rows, metaData: { pager } } = yield api.get('events/query.json', params);
+            self.headers = headers;
+            self.rows = rows.map(r => {
+                return { data: r }
+            });
+            self.total = pager.total;
         } catch (error) {
             console.error("Failed to fetch projects", error);
             self.state = "error"
@@ -301,10 +465,353 @@ export const EventStore = types.model("EventStore", {
         self.loading = false;
     });
 
-    const addProject = flow(function* (data) {
+    const searchEvents = flow(function* (search) {
+        const api = getRoot(self).d2.Api.getApi();
+        if (search && search !== '') {
+            const searchByName = api.get('events/query.json', {
+                filter: `cIfzworL5Kj:LIKE:${search}`,
+                includeAllDataElements: true,
+                programStage: self.id,
+                paging: true,
+                pageSize: 25,
+                page: 1,
+                totalPages: false
+            });
+
+            const searchByCode = api.get('events/query.json', {
+                filter: `UeKCu1x6gC1:LIKE:${search}`,
+                includeAllDataElements: true,
+                programStage: self.id,
+                paging: true,
+                pageSize: 25,
+                page: 1,
+                totalPages: false
+            });
+            const result = yield Promise.all([searchByName, searchByCode]);
+            const headers = result[0].headers
+            let final = result.map(r => {
+                return r.rows;
+            });
+
+            final = flatten(final)
+
+            const rows = unionBy(final, (e) => {
+                return e[0]
+            });
+
+            self.rows = rows.map(r => {
+                return { data: r }
+            });
+            self.headers = headers;
+        } else {
+            self.events = {}
+        }
+    });
+
+    const handleChange = flow(function* (pagination, filters, sorter) {
+        self.loading = true;
+        const order = sorter.field && sorter.order ? `${sorter.field}:${sorter.order === 'ascend' ? 'asc' : 'desc'}` : 'created:desc';
+        const page = pagination.pageSize !== self.pageSize || order !== self.sorter ? 1 : pagination.current;
+        self.sorter = order;
+        self.page = page;
+        self.pageSize = pagination.pageSize
+        const api = getRoot(self).d2.Api.getApi();
+        try {
+            const { headers, rows, metaData: { pager } } = yield api.get('events/query.json', {
+                programStage: self.id,
+                totalPages: true,
+                pageSize: self.pageSize,
+                includeAllDataElements: true,
+                order: self.sorter,
+                ouMode: 'ALL',
+                query: self.search === '' ? '' : `LIKE:${self.search}`,
+                page,
+            });
+            self.total = pager.total;
+            self.pageSize = pager.pageSize;
+            self.rows = rows.map(r => {
+                return { data: r }
+            });
+            self.headers = headers
+        } catch (error) {
+            console.error("Failed to fetch projects", error);
+            self.state = "error"
+        }
+        self.loading = false;
+    });
+    const setHidden = (values) => self.hidden = values;
+    const setInstance = (values) => self.instance = values;
+
+    return {
+        searchEvents,
+        fetchEvents,
+        fetchInstanceEvents,
+        afterCreate,
+        handleChange,
+        fetchMetadata,
+        setHidden,
+        setInstance
+    }
+});;
+
+
+export const Program = types.model('Program', {
+    id: types.identifier,
+    page: 1,
+    pageSize: 10,
+    total: 0,
+    sorter: 'created:desc',
+    programTrackedEntityAttributes: types.optional(types.array(ProgramTrackedEntityAttributes), []),
+    headers: types.optional(types.array(Header), []),
+    rows: types.optional(types.array(Row), []),
+    programStages: types.optional(types.array(ProgramStage), []),
+    related: types.optional(ProgramStage, {}),
+    hidden: types.optional(types.array(types.string), []),
+    trackedEntityType: 'b41rJVoJ4B3',
+    currentInstance: '',
+    currentOU: '',
+    search: '',
+    attribute: ''
+}).views(self => ({
+    get columns() {
+        if (self.rows) {
+            const columns = self.programTrackedEntityAttributes.map(a => {
+                return a.trackedEntityAttribute.id
+            });
+            let cols = self.headers.map((a, i) => {
+                return {
+                    key: a.name,
+                    title: a.column,
+                    dataIndex: a.name,
+                    index: i,
+                    render: (text, row) => {
+                        if (a.name === 'GeIEoCBrKaW') {
+                            return {
+                                props: {
+                                    className: row.currentStatus.cls,
+                                },
+                                children: <div>{row.data[i] || row.currentStatus.cls}</div>,
+                            };
+                        }
+                        return <div>{row.data[i]}</div>
+                    }
+                }
+            }).filter(h => {
+                return columns.indexOf(h.key) !== -1 || h.key === 'ouname'
+            });
+
+            if (self.id === 'lINGRWR9UFx') {
+                const store = getRoot(self);
+                const columns = ['le0A6qC3Oap', 'GeIEoCBrKaW', 'eN9jthkmMds', 'pyQEzpRRcqH', 'ouname'];
+                cols = cols.filter(c => columns.indexOf(c.key) !== -1)
+                cols = [...cols, {
+                    title: 'Actions',
+                    key: 'lINGRWR9UFx',
+                    render: (text, record) => {
+                        let l = [];
+                        if (record.currentStatus.canImplement) {
+                            l = [...l, <Menu.Item key="1" onClick={async () => await record.updateActivityStatus('Ongoing')}>
+                                Start Implementing
+                            </Menu.Item>]
+                        }
+
+                        if (record.canFinishImplementing) {
+                            l = [...l, <Menu.Item key="2" onClick={async () => await record.updateActivityStatus('Implemented')}>
+                                Mark As Implemented
+                            </Menu.Item>]
+                        }
+                        if (record.canAddReport) {
+                            l = [...l, <Menu.Item key="3" onClick={() => {
+                                self.setRow(record);
+                                store.router.setView(views.activityDetails, { instance: record.data[0] })
+                            }}>
+                                Add Report
+                            </Menu.Item>]
+                        }
+                        if (record.canViewAndEditReport || record.disableSubmit) {
+                            l = [...l, <Menu.Item key="4" onClick={() => {
+                                self.setRow(record);
+                                store.router.setView(views.activityDetails, { instance: record.data[0] });
+                            }}>
+                                View Report
+                            </Menu.Item>]
+
+                            if (record.download) {
+                                l = [...l, <Menu.Item key="5">
+                                    <a href={record.download}>Download Report</a>
+                                </Menu.Item>]
+                            }
+
+                            if (!record.disableSubmit) {
+                                l = [...l, <Menu.Item key="6" onClick={async () => await record.updateActivityStatus('Report Approved')}>
+                                    Approve Report
+                                </Menu.Item>]
+                            }
+                        }
+                        const menu = (
+                            <Menu>
+                                {l.map(m => m)}
+                            </Menu>
+                        );
+                        return <Dropdown overlay={menu} trigger={['click']}>
+                            <Button type="link">
+                                <Icon type="down" />
+                            </Button>
+                        </Dropdown>
+                    }
+                }]
+            }
+
+            return cols;
+        }
+        return []
+    },
+    get form() {
+        if (self.programTrackedEntityAttributes) {
+            return self.programTrackedEntityAttributes.map(a => {
+                const { mandatory, valueType } = a;
+                const hidden = self.hidden.indexOf(a.trackedEntityAttribute.id) !== -1
+                return {
+                    key: a.trackedEntityAttribute.id,
+                    title: a.trackedEntityAttribute.name,
+                    mandatory,
+                    valueType,
+                    hidden,
+                    optionSet: a.trackedEntityAttribute.optionSet
+                }
+            })
+        }
+        return []
+    },
+    get eventForms() {
+        const forms = self.programStages.map(programStage => {
+            const defaultColumns = programStage.programStageDataElements.map(de => {
+                const { compulsory: mandatory, dataElement: { valueType } } = de;
+
+                const hidden = self.hidden.indexOf(de.dataElement.id) !== -1
+                return {
+                    title: de.dataElement.name,
+                    dataIndex: de.dataElement.id,
+                    key: de.dataElement.id,
+                    mandatory,
+                    valueType,
+                    hidden,
+                    optionSet: de.dataElement.optionSet
+                }
+            });
+            return [programStage.id, defaultColumns]
+        });
+        return fromPairs(forms)
+    },
+    get ouIndex() {
+        return self.headers.findIndex((x) => {
+            return x.name === 'ou'
+        })
+    },
+
+    get firstProgramStage() {
+        return self.programStages[0]
+    }
+
+})).actions(self => {
+    const fetchAttributes = flow(function* () {
+        const api = getRoot(self).d2.Api.getApi();
+        self.loading = true;
+        try {
+            const { headers, rows, metaData: { pager } } = yield api.get('trackedEntityInstances/query.json', {
+                query: self.search === '' ? '' : `LIKE:${self.search}`,
+                program: self.id,
+                totalPages: true,
+                pageSize: self.pageSize,
+                order: self.sorter,
+                ouMode: 'ALL',
+            });
+            self.rows = rows.map(r => {
+                return { data: r }
+            });
+            self.headers = headers
+            self.total = pager.total;
+        } catch (error) {
+            console.error("Failed to fetch projects", error);
+            self.state = "error"
+        }
+        self.loading = false;
+    });
+    const fetchMetadata = flow(function* () {
+        const api = getRoot(self).d2.Api.getApi();
+        try {
+            const { programTrackedEntityAttributes } = yield api.get(`programs/${self.id}`, {
+                fields: 'programTrackedEntityAttributes[mandatory,valueType,trackedEntityAttribute[id,name,unique,optionSet[options[name,code]]]]'
+            });
+            self.programTrackedEntityAttributes = programTrackedEntityAttributes
+        } catch (error) {
+            console.error("Failed to fetch projects", error);
+            self.state = "error"
+        }
+    });
+
+    async function afterCreate() {
+        await self.fetchMetadata();
+    }
+
+    const handleChange = flow(function* (pagination, filters, sorter) {
+        self.loading = true;
+        const order = sorter.field && sorter.order ? `${sorter.field}:${sorter.order === 'ascend' ? 'asc' : 'desc'}` : 'created:desc';
+        const page = pagination.pageSize !== self.pageSize || order !== self.sorter ? 1 : pagination.current;
+        self.sorter = order;
+        self.page = page;
+        const api = getRoot(self).d2.Api.getApi();
+        try {
+            const { headers, rows, metaData: { pager } } = yield api.get('trackedEntityInstances/query.json', {
+                program: self.id,
+                totalPages: true,
+                pageSize: self.pageSize,
+                order: self.sorter,
+                ouMode: 'ALL',
+                query: self.search === '' ? '' : `LIKE:${self.search}`,
+                page,
+            });
+            self.total = pager.total;
+            self.pageSize = pager.pageSize;
+            self.rows = rows.map(r => {
+                return { data: r }
+            });
+            self.headers = headers
+        } catch (error) {
+            console.error("Failed to fetch projects", error);
+            self.state = "error"
+        }
+        self.loading = false;
+    });
+
+
+    const refresh = flow(function* () {
+        self.loading = true;
+        const api = getRoot(self).d2.Api.getApi();
+        try {
+            const { headers, rows } = yield api.get('trackedEntityInstances/query.json', {
+                program: self.id,
+                pageSize: self.pageSize,
+                order: self.sorter,
+                ouMode: 'ALL',
+                page: self.page,
+                query: self.search === '' ? '' : `LIKE:${self.search}`,
+            });
+            self.rows = rows.map(r => {
+                return { data: r }
+            });
+            self.headers = headers
+        } catch (error) {
+            console.error("Failed to fetch projects", error);
+            self.state = "error"
+        }
+        self.loading = false;
+    });
+
+    const addEvent = flow(function* (data) {
         const api = getRoot(self).d2.Api.getApi();
 
-        const { organisationUnits, assignedUser, ...others } = data;
+        const { organisationUnits, programStage, trackedEntityInstance, ...others } = data;
 
         self.loading = true;
 
@@ -315,66 +822,22 @@ export const EventStore = types.model("EventStore", {
         let events = []
 
         if (organisationUnits && organisationUnits.length > 0) {
-
             events = organisationUnits.map(ou => {
                 let event = {
                     eventDate: new Date().toISOString(),
                     status: 'COMPLETED',
                     completedDate: new Date().toISOString(),
-                    program: self.program,
+                    program: self.id,
                     orgUnit: ou,
                     dataValues,
-                    programStage: self.programStages[0].id
+                    programStage,
+                    trackedEntityInstance
                 }
-                if (self.instance) {
-                    event = { ...event, trackedEntityInstance: self.instance }
-                }
-
                 return event;
             });
-        } else {
-            let event = {
-                eventDate: new Date().toISOString(),
-                status: 'COMPLETED',
-                completedDate: new Date().toISOString(),
-                program: self.program,
-                orgUnit: self.store.orgUnit,
-                dataValues,
-                programStage: self.programStages[0].id
-            }
-
-            if (self.instance) {
-                event = { ...event, trackedEntityInstance: self.instance }
-            }
-
-            events = [event]
         }
-
-
-
         try {
             yield api.post('events', { events });
-            // switch (self.program) {
-            //     case 'TTg5i4JO3U6':
-            //         self.store.router.setView(views.projects, {})
-            //         break;
-            //     case 'nqnAO1d0ilV':
-            //         self.store.router.setView(views.objectives, {})
-            //         break;
-            //     case 'lfBEzT9gvOW':
-            //         self.store.router.setView(views.resultAreas, {})
-            //         break;
-            //     case 'FCs73yoYfWp':
-            //         self.store.router.setView(views.outputs, {})
-            //         break;
-
-            //     case 'yAYNtTb7B03':
-            //         self.store.router.setView(views.activityData, {})
-            //         break;
-            //     default:
-            //         console.log('None')
-
-            // }
         } catch (error) {
             console.error("Failed to fetch projects", error);
             self.state = "error"
@@ -382,215 +845,14 @@ export const EventStore = types.model("EventStore", {
         self.loading = false;
     });
 
-    const setProgram = (program) => self.program = program;
-    const setRelatedProgram = (program) => self.relatedProgram = program;
-    const setRelatedDataElement = (dataElement) => self.relatedDataElement = dataElement;
-    const setInstance = (instance) => self.instance = instance;
-    const searchEvent = flow(function* (id) {
-        const api = getRoot(self).d2.Api.getApi();
-        return yield api.get(`events/${id}.json`);
-    });
-
-    const setCurrentEvent = (event) => {
-        self.currentEvent = event
-    }
-
-
-    return {
-        fetchProgramStages,
-        fetchEvents,
-        addProject,
-        setProgram,
-        setRelatedProgram,
-        setRelatedDataElement,
-        setInstance,
-        setCurrentEvent,
-        searchEvent
-    }
-});
-export const TrackedEntityInstance = types.model("TrackedEntityInstance", {
-    trackedEntityInstance: types.identifier,
-    enrollments: types.optional(types.array(Enrollment), []),
-    orgUnit: types.string,
-    trackedEntityType: types.string,
-    attributes: types.array(Attribute),
-}).actions(self => ({
-}));
-
-
-
-export const TrackedEntityInstanceStore = types.model("TrackedEntityInstanceStore", {
-    program: types.identifier,
-    trackedEntityInstances: types.array(TrackedEntityInstance),
-    page: 1,
-    pageSize: 3,
-    total: 0,
-    loading: false,
-    attributes: types.optional(types.array(ProgramTrackedEntityAttributes), []),
-    sorter: 'created:desc',
-    selectedUnits: types.optional(types.array(types.frozen()), []),
-    currentInstance: types.maybe(types.reference(TrackedEntityInstance)),
-}).views(self => ({
-    get store() {
-        return getParent(self)
-    },
-    get data() {
-        return self.trackedEntityInstances.map(trackedEntityInstance => {
-            const attributes = fromPairs(trackedEntityInstance.attributes.map(a => {
-                return [a.attribute, a.value]
-            }));
-
-            const color = attributes['qxnGOCHbKAS'] === 'New' ? 'yellow' : 'red'
-            return { ...trackedEntityInstance, ...attributes, color }
-        });
-    },
-    get attributeColumns() {
-        return self.headers.filter(r => {
-            const attributes = self.attributes.map(a => a.trackedEntityAttribute.id);
-            return attributes.indexOf(r.name) !== -1
-        });
-    },
-    get defaultColumns() {
-        return self.headers.filter(r => {
-            const attributes = self.attributes.map(a => a.trackedEntityAttribute.id);
-            return attributes.indexOf(r.name) === -1
-        });
-    },
-    get formColumns() {
-        const columns = self.attributes.map(a => {
-            const { mandatory, valueType } = a;
-            return {
-                key: a.trackedEntityAttribute.id,
-                title: a.trackedEntityAttribute.name,
-                dataIndex: a.trackedEntityAttribute.id,
-                mandatory,
-                valueType,
-                optionSet: a.trackedEntityAttribute.optionSet
-            }
-        })
-
-        return [...columns, {
-            key: 'assignedUser',
-            title: 'Assigned to',
-            mandatory: true,
-            valueType: '',
-            optionSet: null,
-            searchUsers: true
-        }]
-    },
-    get stageColumns() {
-        return self.currentInstance.eventStore.columns
-    },
-    get columns() {
-        return [
-            ...self.formColumns,
-            {
-                title: 'Actions',
-                render: (text, record) => {
-                    const menu = (
-                        <Menu>
-                            <Menu.Item key="1" onClick={() => self.setCurrentInstance(record)}>
-                                {/* <Link router={self.store.router} view={views.activity} params={{ activity: record.instance }}> */}
-                                <Icon type="user" />
-                                1st menu item {record.color}
-                                {/* </Link> */}
-                            </Menu.Item>
-                            <Menu.Item key="2">
-                                <Link router={self.store.router} view={views.activities}>
-                                    <Icon type="user" />
-                                    <Icon type="user" />
-                                    2nd menu item
-                                    </Link>
-                            </Menu.Item>
-                            <Menu.Item key="3">
-                                <Link router={self.store.router} view={views.activities}>
-                                    <Icon type="user" />
-                                    <Icon type="user" />
-                                    3rd item
-                                    </Link>
-                            </Menu.Item>
-                        </Menu>
-                    )
-                    return <Dropdown overlay={menu}>
-                        <Icon type="more" style={{ fontSize: '24px' }} />
-                    </Dropdown>
-                }
-            }
-        ]
-    }
-})).actions(self => {
-    const fetchTrackedEntityInstances = flow(function* () {
-        const api = getRoot(self).d2.Api.getApi();
-        self.loading = true;
-        try {
-            const { trackedEntityInstances, pager: { total } } = yield api.get('trackedEntityInstances.json', {
-                program: self.program,
-                totalPages: true,
-                pageSize: self.pageSize,
-                order: self.sorter,
-                ouMode: 'ALL',
-                fields: '*'
-            });
-            self.total = total;
-            self.trackedEntityInstances = trackedEntityInstances
-
-
-
-        } catch (error) {
-            console.error("Failed to fetch projects", error);
-            self.state = "error"
-        }
-        self.loading = false;
-    });
-
-    const findData = flow(function* (activity) {
-        const api = getRoot(self).d2.Api.getApi();
-        try {
-            const { dataValues } = yield api.get(`events/${activity}.json`, {});
-
-            const activities = fromPairs(dataValues.map(d => {
-                return [d.dataElement, d.value]
-            }));
-
-
-
-            const { dataValues: data } = yield api.get(`events/${activities['Cwu1KVVPMzp']}.json`, {});
-
-            const resultAreas = fromPairs(data.map(d => {
-                return [d.dataElement, d.value]
-            }));
-
-            const { dataValues: data1 } = yield api.get(`events/${resultAreas['Z0oFe9Y0AkF']}.json`, {});
-
-            const objectives = fromPairs(data1.map(d => {
-                return [d.dataElement, d.value]
-            }));
-            const { dataValues: data2 } = yield api.get(`events/${objectives['fWpwKdGRp9r']}.json`, {});
-
-            const projects = fromPairs(data2.map(d => {
-                return [d.dataElement, d.value]
-            }));
-
-            self.otherData = {
-                R6fQYmqE2a7: projects['UeKCu1x6gC1'],
-                IvU5WlAUioy: objectives['UeKCu1x6gC1'],
-                jfB1imcdlXr: resultAreas['UeKCu1x6gC1'],
-                aZuLz2kDasY: activities['UeKCu1x6gC1'],
-                cyEYXCpq7iK: activities['cIfzworL5Kj']
-            }
-        } catch (error) {
-            console.error("Failed to fetch projects", error);
-            self.state = "error"
-        }
-    });
-
+    const setHidden = (values) => self.hidden = values;
 
     const addTrackedEntityInstance = flow(function* (data) {
         const api = getRoot(self).d2.Api.getApi();
 
         self.loading = true;
 
-        const { organisationUnits, assignedUser, activity, trackedEntityInstance, enrollment, events, ...others } = data;
+        const { organisationUnits, activity, trackedEntityInstance, enrollment, events, ...others } = data;
 
         const attributes = Object.keys(others).map(attribute => {
             return { attribute, value: data[attribute] };
@@ -601,7 +863,7 @@ export const TrackedEntityInstanceStore = types.model("TrackedEntityInstanceStor
         const trackedEntityInstances = organisationUnits.map(orgUnit => {
             let currentEnrollment = {
                 orgUnit,
-                program: self.program,
+                program: self.id,
                 enrollmentDate: date,
                 incidentDate: date
             }
@@ -611,7 +873,6 @@ export const TrackedEntityInstanceStore = types.model("TrackedEntityInstanceStor
             let tei = {
                 orgUnit,
                 trackedEntityType: self.trackedEntityType,
-                assignedUser,
                 attributes,
                 enrollments: [currentEnrollment]
             }
@@ -624,17 +885,6 @@ export const TrackedEntityInstanceStore = types.model("TrackedEntityInstanceStor
 
         try {
             yield api.post('trackedEntityInstances', { trackedEntityInstances });
-            // switch (self.program) {
-            //     case 'Y7SLdPodxhM':
-            //         self.store.router.setView(views.activities, {})
-            //         break;
-            //     case 'p12qwBMhK3c':
-            //         self.store.router.setView(views.issues, {})
-            //         break;
-            //     default:
-            //         console.log('None')
-
-            // }
         } catch (error) {
             console.error("Failed to fetch projects", error);
             self.state = "error";
@@ -643,102 +893,67 @@ export const TrackedEntityInstanceStore = types.model("TrackedEntityInstanceStor
         self.loading = false;
     });
 
-    const fetchAttributes = flow(function* () {
+
+    const updateTrackedEntityInstance = flow(function* (data) {
         const api = getRoot(self).d2.Api.getApi();
 
-        try {
-            const { programTrackedEntityAttributes } = yield api.get(`programs/${self.program}`, {
-                fields: 'programTrackedEntityAttributes[mandatory,valueType,trackedEntityAttribute[id,name,unique,optionSet[options[name,code]]]]'
-            });
-            self.attributes = programTrackedEntityAttributes;
-        } catch (error) {
-            console.error("Failed to fetch projects", error);
-            self.state = "error"
-        }
-    });
-
-    const handleChange = flow(function* (pagination, filters, sorter) {
         self.loading = true;
-        const order = sorter.field && sorter.order ? `${sorter.field}:${sorter.order === 'ascend' ? 'asc' : 'desc'}` : 'created:desc';
-        const page = pagination.pageSize !== self.pageSize || order !== self.sorter ? 1 : pagination.current;
-        self.sorter = order;
-        const api = getRoot(self).d2.Api.getApi();
+
+        const { organisationUnits, activity, trackedEntityInstance, enrollment, events, ...others } = data;
+
+        const attributes = Object.keys(others).map(attribute => {
+            return { attribute, value: data[attribute] };
+        });
+        const trackedEntityInstances = organisationUnits.map(orgUnit => {
+
+            let tei = {
+                orgUnit,
+                trackedEntityType: self.trackedEntityType,
+                attributes
+            }
+
+            if (trackedEntityInstance) {
+                tei = { ...tei, trackedEntityInstance }
+            }
+            return tei;
+        });
+
         try {
-            const { trackedEntityInstances, pager: { total, pageSize } } = yield api.get('trackedEntityInstances.json', {
-                program: self.program,
-                totalPages: true,
-                pageSize: pagination.pageSize,
-                order,
-                page,
-                ouMode: 'ALL',
-                fields: '*'
-            });
-            // self.headers = headers.map((h, i) => {
-            //     return { ...h, index: i }
-            // });
-            // const found = rows.map(r => {
-            //     const entity = Object.assign.apply({}, self.defaultColumns.map(v => ({
-            //         [v.name]: r[v.index]
-            //     })));
-            //     const attributes = self.attributeColumns.map(h => {
-            //         return { attribute: h.name, value: r[h.index] }
-            //     });
-
-            //     return { ...entity, attributes }
-            // });
-
-            self.total = total;
-            self.pageSize = pageSize;
-            self.trackedEntityInstances = trackedEntityInstances
-
+            yield api.post('trackedEntityInstances', { trackedEntityInstances });
         } catch (error) {
             console.error("Failed to fetch projects", error);
-            self.state = "error"
+            self.state = "error";
+
         }
         self.loading = false;
     });
 
-    const setProgram = (program) => self.program = program;
-    const setSelectedUnits = (units) => self.selectedUnits = units;
-    const addInstance = (instance) => {
-        const found = self.trackedEntityInstances.find(i => {
-            return i.instance === instance.instance;
-        })
+    const setSearch = flow(function* (search) {
+        self.search = search;
+        yield self.fetchAttributes();
+    });
 
-        if (!found) {
-            self.trackedEntityInstances = [...self.trackedEntityInstances, instance];
-        }
+    const setCurrentInstance = val => self.currentInstance = val;
+    const setCurrentOU = val => self.currentOU = val;
+    const setRow = val => self.row = val;
 
-    }
-    const setCurrentInstance = (instance) => {
-        // self.currentInstance = self.trackedEntityInstances.find(i => i.instance === instance.instance);
-        // self.store.router.setView(views.activity, { activity: instance.instance })
-        self.currentInstance = instance
-    }
-
-    const setDetails = async (instance) => {
-        self.addInstance(instance);
-
-        const found = self.trackedEntityInstances.find(i => {
-            return i.instance === instance.instance;
-        });
-        self.setCurrentInstance(found);
-        self.currentInstance.setProgram(self.program);
-        self.currentInstance.setEventStore();
-        await self.currentInstance.eventStore.fetchProgramStages();
-        await self.currentInstance.eventStore.fetchEvents();
-    }
 
     return {
-        fetchTrackedEntityInstances,
+        afterCreate,
         fetchAttributes,
+        fetchMetadata,
         handleChange,
-        setProgram,
-        findData,
-        setSelectedUnits,
+        addEvent,
+        setHidden,
         addTrackedEntityInstance,
+        refresh,
+        setSearch,
         setCurrentInstance,
-        addInstance,
-        setDetails
+        setCurrentOU,
+        updateTrackedEntityInstance,
+        setRow
     }
+
 });
+
+

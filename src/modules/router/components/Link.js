@@ -1,46 +1,17 @@
-// eslint-disable-next-line
 import React from 'react';
 import { observer } from 'mobx-react';
 
-const LinkBase = ({
-    view,
-    className,
-    params = {},
-    queryParams = {},
-    store = {},
-    refresh = false,
-    style = {},
-    children,
-    title = children,
-    router = store.router
-}) => {
-    if (!router) {
-        console.error(
-            'The router prop must be defined for a Link component to work!'
-        );
-        return null;
-    }
-    return (
-        <a
-            style={style}
-            className={className}
-            onClick={e => {
-                const middleClick = e.button === 2;
-                const cmdOrCtrl = e.metaKey || e.ctrlKey;
-                const openinNewTab = middleClick || cmdOrCtrl;
-                const shouldNavigateManually =
-                    refresh || openinNewTab || cmdOrCtrl;
+const Link = observer(({ router, view, params, children, className }) => {
+  const clickLink = e => {
+    e.preventDefault();
+    router.setView(view, params);
+  };
 
-                if (!shouldNavigateManually) {
-                    e.preventDefault();
-                    router.goTo(view, params, store, queryParams);
-                }
-            }}
-            href={view.replaceUrlParams(params, queryParams)}
-        >
-            {title}
-        </a>
-    );
-};
+  return (
+    <a href={view.formatUrl(params)} onClick={clickLink} className={className}>
+      <div>{children}</div>
+    </a>
+  );
+});
 
-export const Link = observer(LinkBase);
+export default Link;

@@ -2,6 +2,7 @@
   "name": "ui",
   "version": "0.1.0",
   "private": true,
+  "homepage": "./",
   "dependencies": {
     "@dhis2/d2-ui-app": "^2.0.0",
     "@dhis2/d2-ui-core": "^6.1.1",
@@ -35,7 +36,7 @@
   },
   "scripts": {
     "start": "react-app-rewired start",
-    "build": "react-app-rewired build && cd build && zip -r -D function-updater.zip .",
+    "build": "react-app-rewired build && cd build && zip -r -D baylor.zip .",
     "test": "react-app-rewired test",
     "eject": "react-app-rewired eject"
   },

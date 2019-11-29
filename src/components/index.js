@@ -1,20 +1,21 @@
 import { Home } from './Home';
 import { Issue } from "./Issue";
-import { Activity } from "./Activity";
+import { PlannedActivity } from "./PlannedActivity";
 import { Action } from "./Action";
-import { ActivityData } from "./ActivityData";
+import { Activity } from "./Activity";
 import { Output } from "./Output";
 import { Objective } from "./Objective";
 import { Project } from "./Project";
 import { ResultArea } from "./ResultArea";
 import { Report } from './Report';
+import { ActivityDetails } from './ActivityDetails';
 
 import {
-    ActivityDataForm,
+    ActivityForm,
     ObjectiveForm,
     OutputForm,
     ResultAreaForm,
-    ActivityForm,
+    PlannedActivityForm,
     ProjectForm
 } from './forms'
 
@@ -22,18 +23,19 @@ import {
 export {
     Home,
     Issue,
-    Activity,
+    PlannedActivity,
     Action,
-    ActivityData,
+    Activity,
     Output,
     Objective,
     Project,
     ResultArea,
     Report,
-    ActivityDataForm,
+    ActivityForm,
     ObjectiveForm,
     OutputForm,
     ResultAreaForm,
-    ActivityForm,
+    PlannedActivityForm,
+    ActivityDetails,
     ProjectForm
 }

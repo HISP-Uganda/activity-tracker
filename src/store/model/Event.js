@@ -77,6 +77,10 @@ export class Event {
         return this.dataValues['fy5XDC0rMKj'] && this.dataValues['fy5XDC0rMKj'] === 'Report Submitted'
     }
 
+    @computed get isApproved() {
+        return this.dataValues['fy5XDC0rMKj'] && this.dataValues['fy5XDC0rMKj'] === 'Report Approved'
+    }
+
     @computed get download() {
         const api = this.d2.Api.getApi();
         const url = api.baseUrl
@@ -202,7 +206,6 @@ export class EventStore {
                     title: 'Implementor',
                     dataIndex: 'implementor',
                     key: 'implementor',
-                    // sorter: true,
                     render: (text, record) => {
                         return record.currentEvent.eventData.assignedUserUsername
                     }
@@ -230,6 +233,11 @@ export class EventStore {
                             {record.currentEvent.canFinishImplementing ? <Button onClick={async () => await record.currentEvent.updateEvent({ fy5XDC0rMKj: 'Implemented' })}>Mark as Implemented</Button> : null}
                             {record.currentEvent.canAddReport ? <Link to={`/events/details/${record.event}`}>Add Report</Link> : null}
                             {record.currentEvent.canViewAndEditReport ? <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                <Link to={`/events/details/${record.event}`}>View Report</Link>
+                                {record.currentEvent.download ? <a href={record.currentEvent.download}>Download</a> : null}
+                                <Button onClick={async () => await record.currentEvent.updateEvent({ fy5XDC0rMKj: 'Report Approved' })}>Approve Report</Button>
+                            </div> : null}
+                            {record.currentEvent.isApproved ? <div style={{ display: 'flex', flexDirection: 'column' }}>
                                 <Link to={`/events/details/${record.event}`}>View Report</Link>
                                 {record.currentEvent.download ? <a href={record.currentEvent.download}>Download</a> : null}
                             </div> : null}
@@ -322,17 +330,21 @@ export class EventStore {
 
     @action fetchEvents = async () => {
         const api = this.d2.Api.getApi();
-        this.loading = true;
 
-        const { headers, rows, metaData: { pager } } = await api.get('events/query.json', {
+        let params = {
             includeAllDataElements: true,
             programStage: this.programStages[0].id,
             pageSize: this.pageSize,
-            assignedUserMode: 'CURRENT',
             page: 1,
             order: this.sorter,
             totalPages: true
-        });
+        }
+
+        if (!this.d2.currentUser.authorities.has('ALL')) {
+            params = { ...params, assignedUserMode: 'CURRENT' }
+        }
+        this.loading = true;
+        const { headers, rows, metaData: { pager } } = await api.get('events/query.json', params);
 
         const changedHeaders = headers.map((h, i) => {
             return { ...h, index: i }
@@ -381,16 +393,21 @@ export class EventStore {
         const page = pagination.pageSize !== this.pageSize || order !== this.sorter ? 1 : pagination.current;
         this.sorter = order;
         const api = this.d2.Api.getApi();
-        try {
-            const { headers, rows, metaData: { pager } } = await api.get('events/query.json', {
-                programStage: this.programStages[0].id,
-                includeAllDataElements: true,
-                totalPages: true,
-                pageSize: pagination.pageSize,
-                order,
-                page
-            });
 
+        let params = {
+            includeAllDataElements: true,
+            programStage: this.programStages[0].id,
+            totalPages: true,
+            pageSize: pagination.pageSize,
+            order,
+            page
+        }
+
+        if (!this.d2.currentUser.authorities.has('ALL')) {
+            params = { ...params, assignedUserMode: 'CURRENT' }
+        }
+        try {
+            const { headers, rows, metaData: { pager } } = await api.get('events/query.json', params);
             const changedHeaders = headers.map((h, i) => {
                 return { ...h, index: i }
             });

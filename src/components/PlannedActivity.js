@@ -1,10 +1,14 @@
 import React, { useState } from 'react';
 import { inject, observer } from "mobx-react";
-import { Card, Layout, Icon, Table, Descriptions } from 'antd';
+import { Card, Layout, Icon, Table, Input, Descriptions } from 'antd';
+import { Link } from '../modules/router';
+import views from '../config/views';
 
 const { Header, Content } = Layout;
+const { Search } = Input;
 
-export const Report = inject("store")(observer(({ store }) => {
+export const PlannedActivity = inject("store")(observer(({ store }) => {
+
     const [expandedRowKeys, setExpandedRowKeys] = useState([]);
     const onExpand = (expanded, record) => {
         if (expanded) {
@@ -24,28 +28,40 @@ export const Report = inject("store")(observer(({ store }) => {
                         style={{ fontSize: 24 }}
                     />
                 </div>
+                <div style={{ width: 300 }}>
+                    <Link router={store.router} view={views.plannedActivityForm}><Icon type="plus-square" style={{ fontSize: 24 }} /></Link>
+                </div>
+                <div style={{ marginLeft: 'auto' }}>
+                    <Search
+                        size="large"
+                        placeholder="input search text"
+                        onSearch={store.plannedActivity.setSearch}
+                        style={{ width: 600 }}
+                    />
+                </div>
             </Header>
             <Content style={{ overflow: 'auto', padding: 10 }}>
-                <Card title="Activity Reports">
+                <Card title="Planned Activities">
                     <Table
                         style={{ padding: 0 }}
-                        columns={store.report.columns}
-                        dataSource={store.report.rows}
+                        columns={store.plannedActivity.columns}
+                        dataSource={store.plannedActivity.rows}
                         rowKey={(record) => record.data[0]}
-                        onChange={store.report.handleChange}
+                        onChange={store.plannedActivity.handleChange}
                         expandedRowKeys={expandedRowKeys}
                         onExpand={onExpand}
+                        size="small"
                         expandedRowRender={record => {
                             return <Card>
-                                <Descriptions title="Report Details" size="small">
-                                    {record.data.map((item, i) => <Descriptions.Item key={i} label={store.report.headers[i].column}>{item}</Descriptions.Item>)}
+                                <Descriptions title="Activity Details" size="small">
+                                    {record.data.map((item, i) => <Descriptions.Item key={i} label={store.plannedActivity.headers[i].column}>{item}</Descriptions.Item>)}
                                 </Descriptions>
                             </Card>
                         }}
                         pagination={{
                             showSizeChanger: true,
-                            total: store.report.total,
-                            pageSize: store.report.pageSize,
+                            total: store.plannedActivity.total,
+                            pageSize: store.plannedActivity.pageSize,
                             pageSizeOptions: ['5', '10', '15', '20', '25', '50', '100']
                         }}
                     />

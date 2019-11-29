@@ -1,81 +1,76 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { inject, observer } from "mobx-react";
 import {
-    Icon,
-    Button,
-    Card,
     Form,
-    Input,
-    Row,
+    Card,
+    Layout,
+    Icon,
     Col,
+    Row,
+    Button,
     Upload,
-    DatePicker,
-    Select,
-    AutoComplete,
     Table,
-    Comment,
-    Tooltip,
-    Avatar,
-    List
+    Descriptions
 } from 'antd';
-import { fromPairs } from 'lodash'
-import {
-    useParams
-} from 'react-router-dom'
-
-import ReactQuill from 'react-quill';
-
-import 'react-quill/dist/quill.snow.css';
-
-import Editor from './forms/Quill';
+import { Link } from '../modules/router';
+import views from '../config/views';
+import { displayField } from './forms/forms';
+import * as layouts from './forms/utils';
 import { DrawerForm } from './forms/DrawerForm';
-import { generateUid } from '../utils';
-import moment from 'moment';
 
-const { Option } = Select;
-const { TextArea } = Input;
-const { Option: AutoOption } = AutoComplete;
 
-const ActivityDetails = ({ store, form }) => {
-    let { event } = useParams();
-    const [upload, setUpload] = useState({})
-    useEffect(() => {
-        async function pull() {
-            const issueTracker = store.issueStore;
-            await issueTracker.fetchAttributes();
-            const a = store.activityStore;
-            await a.fetchProgramStages();
-            await a.relatedProgram.fetchProgramStages();
-            await a.searchEvent(event)
-            await a.currentEvent.setRelatedTracker(issueTracker);
-            // await a.currentEvent.setRelationshipType('PHznmJGgtlA')
-            a.currentEvent.setD2(a.d2);
-            await a.currentEvent.fetchRelationShips();
-            store.setCurrentProgram(a);
-            console.log(a.currentEvent.eventData)
+const { Header, Content } = Layout;
 
+const BForm = ({ store, form }) => {
+
+    const [expandedRowKeys, setExpandedRowKeys] = useState([]);
+    const onExpand = (expanded, record) => {
+        if (expanded) {
+            setExpandedRowKeys([record.event]);
+        } else {
+            setExpandedRowKeys([])
         }
-        pull()
-    }, []);
-
+    }
     const handleSubmit = e => {
         e.preventDefault();
-        form.validateFieldsAndScroll((err, values) => {
+        form.validateFieldsAndScroll(async (err, values) => {
             if (!err) {
-                const { BNoMKfDs0Oj, kc42dsL4xqA, lX4Ae98tFFl } = values
-                values = { BNoMKfDs0Oj, kc42dsL4xqA, lX4Ae98tFFl, ...upload }
-                const dataValues = store.activityStore.currentEvent.dataValues;
-                const currentStatus = dataValues['fy5XDC0rMKj'];
-
-                if (currentStatus === 'Implemented') {
-                    values = { ...values, 'fy5XDC0rMKj': 'Report Submitted' }
+                let { upload, ...rest } = values;
+                rest = {
+                    ...rest,
+                    BNoMKfDs0Oj: rest['BNoMKfDs0Oj'].format('YYYY-MM-DD'),
+                    kc42dsL4xqA: rest['kc42dsL4xqA'].format('YYYY-MM-DD'),
                 }
-                const a = store.activityStore;
-                a.currentEvent.updateEvent(values);
+                await store.plannedActivity.addEvent({ ...rest, programStage: 'gCp6ffVmx0g', organisationUnits: [store.currentRow.event.orgUnit], trackedEntityInstance: store.currentRow.event.trackedEntityInstance });
+                await store.currentRow.updateActivityStatus('Report Submitted');
+                await store.currentRow.fetchEvents();
             }
         });
     };
+
+    const onSubmit = async (values) => {
+        values = {
+            ...values,
+            BEIor2SEmOp: values['BEIor2SEmOp'].format('YYYY-MM-DD')
+        }
+        await store.plannedActivity.addEvent({ ...values, programStage: 'qky1qGVPe7e', organisationUnits: [store.currentRow.event.orgUnit], trackedEntityInstance: store.currentRow.event.trackedEntityInstance });
+        await store.currentRow.fetchEvents();
+        store.hideIssueDialog()
+    }
+
+    const onActionSubmit = async (values) => {
+        values = {
+            ...values,
+            SO9B1IUruRa: values['SO9B1IUruRa'].format('YYYY-MM-DD'),
+            XhzH8wqpiyo: values['XhzH8wqpiyo'].format('YYYY-MM-DD'),
+        }
+        await store.plannedActivity.addEvent({ ...values, programStage: 'eXOOIxW2cAZ', organisationUnits: [store.currentRow.event.orgUnit], trackedEntityInstance: store.currentRow.event.trackedEntityInstance });
+        await store.currentRow.fetchEvents()
+        store.hideActionDialog()
+    }
+
     const { getFieldDecorator } = form;
+
     const normFile = e => {
         if (Array.isArray(e)) {
             return e;
@@ -88,352 +83,106 @@ const ActivityDetails = ({ store, form }) => {
         var data = new FormData()
         data.append('file', file)
         const { response: { fileResource: { id } } } = await api.post('fileResources', data);
-        setUpload({
+        form.setFieldsValue({
             'yxGmEyvPfwl': id,
-        })
+        });
         onSuccess("ok");
     };
-
-    const renderOption = (item) => {
-        return (
-            <AutoOption key={item.id} value={item.id}>
-                {item.displayName}
-            </AutoOption>
-        );
-    };
-    const onSubmit = async (values) => {
-        const relationshipType = store.activityStore.issue.id
-        const currentEvent = store.currentProgram.currentEvent
-        const currentTracker = store.issueStore;
-        const trackedEntityInstance = generateUid();
-        const enrollment = generateUid();
-        values = { ...values, organisationUnits: [store.activityStore.currentEvent.eventData.orgUnit], trackedEntityInstance, enrollment }
-        await currentTracker.addTrackedEntityInstance(values);
-        const to = {
-            trackedEntityInstance: {
-                trackedEntityInstance
-            }
-        }
-        await currentEvent.addRelationShip(to, relationshipType);
-        await currentEvent.fetchRelationShips();
-        setVisible(false)
-    }
-
-    const onActionSubmit = async (values) => {
-        const tracker = store.currentProgram.currentEvent.relatedTracker;
-        let instance = fromPairs(tracker.formColumns.map(column => {
-            return [column.key, currentInstance[column.key]]
-        }));
-        instance = { ...instance, trackedEntityInstance: currentInstance.trackedEntityInstance, organisationUnits: [currentInstance.orgUnit], qxnGOCHbKAS: values['eQve0e2UQZB'] };
-        const { orgUnit, trackedEntityInstance } = currentInstance;
-        values = { ...values, orgUnit, trackedEntityInstance }
-        await tracker.addEvent(values);
-        await tracker.addTrackedEntityInstance(instance);
-        await store.currentProgram.currentEvent.fetchRelationShips();
-        setModalVisible(false)
-    }
-
-
-    const CommentList = ({ comments }) => (
-        <List
-            dataSource={comments}
-            header={`${comments.length} ${comments.length > 1 ? 'Comments' : 'Comment'}`}
-            itemLayout="horizontal"
-            renderItem={props => <Comment {...props} />}
-        />
-    );
-
-    const Editor1 = ({ onChange, onSubmit, submitting, value }) => (
-        <div>
-            <Form.Item>
-                <TextArea rows={4} onChange={onChange} value={value} />
-            </Form.Item>
-            <Form.Item>
-                <Button disabled={store.currentProgram && store.currentProgram.currentEvent.disableSubmit} htmlType="button" loading={submitting} onClick={onSubmit} type="primary">
-                    Add Comment
-            </Button>
-            </Form.Item>
-        </div>
-    );
-
-
-    const displayField = (field) => {
-        if (field) {
-            let f;
-            let conf;
-            switch (field.valueType) {
-                case 'DATE':
-                    f = <DatePicker size="large" />;
-                    conf = {
-                        initialValue: store.currentProgram ? moment(store.currentProgram.currentEvent.dataValues[field.key]) : moment(),
-                        rules: [{ type: 'object', required: field.mandatory, message: `Please input ${field.title}` }],
-                    };
-                    break;
-                case 'LONG_TEXT':
-                    f = <TextArea rows={6} />;
-                    conf = {
-                        rules: [{ required: field.mandatory, message: `Please input ${field.title}` }],
-                    }
-                    break;
-                case 'HTML':
-                    conf = {
-                        rules: [{ required: field.mandatory, message: `Please input ${field.title}` }],
-                    }
-                    f = <ReactQuill modules={modules} formats={formats} theme="snow" />;
-                    break;
-                case 'FILE_RESOURCE':
-                    f = <Upload.Dragger name="files" customRequest={dummyRequest} multiple={false}>
-                        <p className="ant-upload-drag-icon">
-                            <Icon type="inbox" />
-                        </p>
-                        <p className="ant-upload-text">Click or drag file to this area to upload</p>
-                        <p className="ant-upload-hint">Support for a single upload.</p>
-                    </Upload.Dragger>
-                    conf = {
-                        valuePropName: 'fileList',
-                        getValueFromEvent: normFile,
-                    }
-                    break;
-
-                default:
-                    conf = {
-                        rules: [{ required: field.mandatory, message: `Please input ${field.title}` }],
-                    }
-                    if (field.optionSet) {
-                        f = <Select size="large">
-                            {field.optionSet.options.map(d => <Option value={d.code} key={d.code}>{d.name}</Option>)}
-                        </Select>
-                    } else if (field.searchUsers) {
-                        f = <AutoComplete
-                            size="large"
-                            dataSource={store.users.map(renderOption)}
-                            style={{ width: '100%' }}
-                            onSearch={store.searchUsers}
-                            placeholder="input here"
-                        />
-
-                    } else if (field.isRelationship) {
-                        f = <Select size="large">
-                            {store.currentProgram.relatedProgram.data.map(d => <Option value={d.event} key={d.event}>{d['UeKCu1x6gC1']} - {d['cIfzworL5Kj']}</Option>)}
-                        </Select>
-                    } else {
-                        f = <Input size="large" style={{ width: '100%' }} />
-                    }
-            }
-            return <Form.Item label={field.title} key={field.key}>
-                {getFieldDecorator(field.key, conf)(f)}
-            </Form.Item>
-        }
-    }
-
-    const modules = {
-        toolbar: [
-            [{ 'header': [1, 2, false] }],
-            ['bold', 'italic', 'underline', 'strike', 'blockquote'],
-            [{ 'list': 'ordered' }, { 'list': 'bullet' }, { 'indent': '-1' }, { 'indent': '+1' }],
-            ['link', 'image'],
-            ['clean']
-        ],
-    };
-
-    const formats = [
-        'header',
-        'bold', 'italic', 'underline', 'strike', 'blockquote',
-        'list', 'bullet', 'indent',
-        'link', 'image'
-    ]
-
-    const actualStartDate = store.currentProgram ? store.currentProgram.formColumns.find(c => c.key === 'BNoMKfDs0Oj') : null;
-    const actualEndDate = store.currentProgram ? store.currentProgram.formColumns.find(c => c.key === 'kc42dsL4xqA') : null;
-
-    if (actualStartDate && actualEndDate) {
-        actualEndDate.mandatory = true;
-        actualStartDate.mandatory = true;
-    }
-    let quillRef = null;
-    let reactQuillRef = null;
-
-
-    const attachQuillRefs = () => {
-        if (reactQuillRef && typeof reactQuillRef.getEditor !== 'function') return;
-        if (quillRef != null) return;
-
-        const quillRef1 = reactQuillRef.getEditor();
-        if (quillRef1 != null) quillRef = quillRef1;
-    }
-
-    const [visible, setVisible] = useState(false);
-    const [modalVisible, setModalVisible] = useState();
-    const [currentInstance, setCurrentInstance] = useState(null);
-    const [expandedRowKeys, setExpandedRowKeys] = useState([]);
-
-    const [comments, setComments] = useState([])
-    const [submitting, setSubmitting] = useState(false)
-    const [value, setValue] = useState('');
-
-
-    const handleSubmitComment = () => {
-        setSubmitting(true);
-        setSubmitting(false);
-        setComments([
-            {
-                author: 'Han Solo',
-                avatar: 'https://zos.alipayobjects.com/rmsportal/ODTLcjxAfvqbxHnVXCYX.png',
-                content: <p>{value}</p>,
-                datetime: moment().fromNow(),
-            },
-            ...comments
-        ])
-
-        setValue('');
-
-    }
-
-    const handleChange = e => {
-        setValue(e.target.value)
-    };
-
-
-    const showModal = () => {
-        setVisible(true)
-    };
-
-    const showActionModal = () => {
-        setModalVisible(true)
-    };
-
-    const onExpand = (expanded, record) => {
-        if (expanded) {
-            setExpandedRowKeys([record.trackedEntityInstance]);
-            setCurrentInstance(record);
-        } else {
-            setExpandedRowKeys([])
-        }
-    }
-
-    const handleCancel = () => {
-        setVisible(false);
-    };
-    const handleModalCancel = () => {
-        setModalVisible(false);
-    };
-
-    useEffect(() => {
-        attachQuillRefs()
-        return () => {
-            attachQuillRefs()
-        };
-    }, []);
-
     return (
         <div>
-            <Row gutter={[16, 16]}>
-                <Col span={16}>
-                    <Card>
-                        <Form layout={null} onSubmit={handleSubmit}>
-                            <Row gutter={[16]}>
-                                <Col span={12}>
-                                    {displayField(actualStartDate)}
-                                    {displayField(actualEndDate)}
-                                </Col>
-                                <Col span={12}>
-
-                                    <Form.Item label="Upload" key="upload">
-                                        {getFieldDecorator('upload', {
-                                            valuePropName: 'fileList',
-                                            // initialValue: store.currentProgram && store.currentProgram.currentEvent ? [{}] : [],
-                                            rules: [{ required: store.currentProgram && !store.currentProgram.currentEvent.download, message: `Please upload report` }],
-                                            getValueFromEvent: normFile,
-                                        })(
-                                            <Upload.Dragger name="files" customRequest={dummyRequest} multiple={false}>
-                                                <p className="ant-upload-drag-icon">
-                                                    <Icon type="inbox" />
-                                                </p>
-                                                <p className="ant-upload-text">Click or drag file to this area to upload</p>
-                                                <p className="ant-upload-hint">Support for a single upload.</p>
-                                            </Upload.Dragger>)}
-                                    </Form.Item>
-                                    {/* {displayField(upload)} */}
-                                </Col>
-                            </Row>
-                            <Form.Item label="Report">
-                                {getFieldDecorator('lX4Ae98tFFl', {
-                                    initialValue: store.currentProgram && store.currentProgram.currentEvent.dataValues['lX4Ae98tFFl'] ? store.currentProgram.currentEvent.dataValues['lX4Ae98tFFl'] : '',
-                                    rules: [{ required: true, message: `Please input` }],
-                                })(
-                                    <ReactQuill
-                                        ref={(el) => { reactQuillRef = el }}
-                                        theme={'snow'}
-                                        modules={Editor.modules}
-                                        formats={Editor.formats} />
-                                )}
-
-                            </Form.Item>
-                            <Form.Item layout={null}>
-                                <Button disabled={store.currentProgram && store.currentProgram.currentEvent.disableSubmit} type="primary" htmlType="submit" size="large">Update Activity</Button>
-                            </Form.Item>
-                        </Form>
-                    </Card>
-                </Col>
-
-                <Col span={8}>
-
-                    <div>
-                        {comments.length > 0 && <CommentList comments={comments} />}
-                        <Comment
-                            avatar={
-                                <Avatar
-                                    src="https://zos.alipayobjects.com/rmsportal/ODTLcjxAfvqbxHnVXCYX.png"
-                                    alt="Han Solo"
-                                />
-                            }
-                            content={
-                                <Editor1
-                                    onChange={handleChange}
-                                    onSubmit={handleSubmitComment}
-                                    submitting={submitting}
-                                    value={value}
-                                />
-                            }
-                        />
-                    </div>
-                </Col>
-
-            </Row>
-
-            <Row gutter={[16, 16]}>
-                <Col span={24}>
-                    {store.currentProgram ?
-                        <div>
-                            <Card title="Issues Arising" extra={<Button onClick={showModal} size="large">Add Identified Issue</Button>} >
-                                <Table
-                                    rowKey="trackedEntityInstance"
-                                    columns={store.currentProgram.currentEvent.relatedTracker.formColumns}
-                                    dataSource={store.currentProgram.currentEvent.relatedTracker.data}
-                                    expandedRowKeys={expandedRowKeys}
-                                    onExpand={onExpand}
-                                    expandIconAsCell={false}
-                                    expandedRowRender={record => <Card title="Issue Actions" extra={<Button onClick={showActionModal} size="large">Add Action</Button>} style={{ marginTop: 16 }}>
-                                        <Table
-                                            rowKey="event"
-                                            columns={store.currentProgram.currentEvent.relatedTracker.dataElementColumns}
-                                            dataSource={record.events}
-                                            pagination={false}
-                                        />
-                                    </Card>
+            <Header style={{ background: '#fff', paddingRight: 15, paddingLeft: 5, display: 'flex' }}>
+                <div style={{ width: 50 }}>
+                    <Icon
+                        className="trigger"
+                        type={store.settings.collapsed ? 'menu-unfold' : 'menu-fold'}
+                        onClick={store.settings.toggle}
+                        style={{ fontSize: 24 }}
+                    />
+                </div>
+                <div style={{ width: 300 }}>
+                    <Link router={store.router} view={views.plannedActivity}><Icon type="plus-square" style={{ fontSize: 24 }} /></Link>
+                </div>
+            </Header>
+            <Content style={{ overflow: 'auto', padding: 10 }}>
+                <Row gutter={[8, 8]}>
+                    <Col span={12}>
+                        <Card title="Report Details">
+                            <Form {...layouts.formItemLayout} onSubmit={handleSubmit}>
+                                {store.report.form.map(s => {
+                                    if (store.currentRow.previousReport[s.key]) {
+                                        return displayField(s, getFieldDecorator, { initialValue: store.currentRow.previousReport[s.key] })
                                     }
-                                />
-                            </Card>
-                            <DrawerForm visible={visible} formColumns={store.currentProgram.currentEvent.relatedTracker.formColumns} onSubmit={onSubmit} onClose={handleCancel} />
-                            <DrawerForm visible={modalVisible} formColumns={store.currentProgram.currentEvent.relatedTracker.dataElementColumns} onSubmit={onActionSubmit} onClose={handleModalCancel} />
-                        </div>
+                                    return displayField(s, getFieldDecorator, {})
+                                })}
+                                <Form.Item label="Upload" key="upload">
+                                    {getFieldDecorator('upload', {
+                                        valuePropName: 'fileList',
+                                        rules: [{ required: true, message: `Please upload report` }],
+                                        getValueFromEvent: normFile,
+                                    })(
+                                        <Upload.Dragger name="files" customRequest={dummyRequest} multiple={false}>
+                                            <p className="ant-upload-drag-icon">
+                                                <Icon type="inbox" />
+                                            </p>
+                                            <p className="ant-upload-text">Click or drag file to this area to upload</p>
+                                            <p className="ant-upload-hint">Support for a single upload.</p>
+                                        </Upload.Dragger>)}
+                                </Form.Item>
+                                <Form.Item {...layouts.tailFormItemLayout}>
+                                    <Button type="primary" htmlType="submit" size="large" disabled={store.currentRow.disableSubmit}>Submit Report</Button>
+                                </Form.Item>
+                            </Form>
+                        </Card>
+                        &nbsp;
+                        <Card title="Report Comments">
+                        </Card>
+                    </Col>
 
-                        : null}
-                </Col>
-            </Row>
-
+                    <Col span={12}>
+                        <Card title="Issues Arising" extra={<Button onClick={store.showIssueDialog} size="large">Add Identified Issue</Button>}>
+                            <Table
+                                style={{ padding: 0 }}
+                                columns={store.issue.columns}
+                                dataSource={store.currentRow.issues}
+                                rowKey="event"
+                                pagination={false}
+                                expandedRowKeys={expandedRowKeys}
+                                onExpand={onExpand}
+                                expandedRowRender={record => {
+                                    return <Card>
+                                        <Descriptions title="Issue Details" size="small">
+                                            {store.issue.form.map((item, i) => <Descriptions.Item key={i} label={item.title}>{record[item.key]}</Descriptions.Item>)}
+                                        </Descriptions>
+                                    </Card>
+                                }}
+                            />
+                        </Card>
+                        &nbsp;
+                        <Card title="Actions Taken" extra={<Button disabled={store.currentRow.issues.length === 0} onClick={store.showActionDialog} size="large">Add Action</Button>}>
+                            <Table
+                                style={{ padding: 0 }}
+                                columns={store.action.columns}
+                                dataSource={store.currentRow.actions}
+                                rowKey="event"
+                                pagination={false}
+                                expandedRowKeys={expandedRowKeys}
+                                onExpand={onExpand}
+                                expandedRowRender={record => {
+                                    return <Card>
+                                        <Descriptions title="Action Details" size="small">
+                                            {store.action.form.map((item, i) => <Descriptions.Item key={i} label={item.title}>{record[item.key]}</Descriptions.Item>)}
+                                        </Descriptions>
+                                    </Card>
+                                }}
+                            />
+                        </Card>
+                        <DrawerForm visible={store.issueDialogOpen} formColumns={store.issue.form} onSubmit={onSubmit} onClose={store.hideIssueDialog} />
+                        <DrawerForm visible={store.actionDialogOpen} formColumns={store.action.form} onSubmit={onActionSubmit} onClose={store.hideActionDialog} />
+                    </Col>
+                </Row>
+            </Content>
         </div>
     );
 };
 
-export const ReportDetails = Form.create({ name: 'register' })(inject("store")(observer(ActivityDetails)));
+export const ActivityDetails = Form.create({ name: 'register' })(inject("store")(observer(BForm)));

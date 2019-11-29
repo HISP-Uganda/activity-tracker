@@ -1,12 +1,13 @@
-import { observable, action } from "mobx";
+import { types } from "mobx-state-tree"
 
-class UI {
-    @observable collapsed = false;
+const UI = types
+    .model("UI", {
+        collapsed: false
+    })
+    .actions(self => ({
+        toggle() {
+            self.collapsed = !self.collapsed
+        }
+    }));
 
-    @action
-    toggle = () => {
-        this.collapsed = !this.collapsed
-    }
-}
-
-export default new UI();
+export default UI;

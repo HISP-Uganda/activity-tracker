@@ -1,0 +1,758 @@
+import { flow, getParent, types, getRoot } from "mobx-state-tree";
+import { fromPairs } from 'lodash'
+import React from 'react'
+import { Menu, Icon, Dropdown } from "antd";
+import views from '../../config/views'
+import { Link } from '../../modules/router'
+
+export const Attribute = types.model("Attribute", {
+    attribute: types.string,
+    value: ''
+});
+
+export const Option = types.model("Option", {
+    name: types.string,
+    code: types.string
+});
+
+export const OptionSet = types.model("OptionSet", {
+    options: types.array(Option)
+});
+
+
+export const Header = types.model("Header", {
+    name: types.string,
+    column: types.string,
+    type: types.string,
+    hidden: types.boolean,
+    meta: types.boolean,
+});
+
+export const Result = types.model('Result', {
+    headers: types.array(Header),
+    rows: types.array(types.array(types.string)),
+})
+
+export const TrackedEntityAttribute = types
+    .model("TrackedEntityAttributes", {
+        id: types.identifier,
+        name: types.string,
+        unique: false,
+        optionSet: types.maybeNull(OptionSet)
+    });
+
+export const ProgramTrackedEntityAttributes = types.model("ProgramTrackedEntityAttributes", {
+    trackedEntityAttribute: TrackedEntityAttribute,
+    valueType: types.string,
+    mandatory: false
+});
+
+export const DataValue = types.model("DataValue", {
+    value: types.string,
+    dataElement: types.string,
+});
+
+export const Constraint = types.model('Constraint', {
+    relationshipEntity: types.string,
+    program: types.frozen()
+})
+
+export const RelationshipType = types.model('RelationshipType', {
+    id: types.identifier,
+    name: types.string,
+    bidirectional: false,
+    toFromName: '',
+    fromToName: '',
+    fromConstraint: Constraint,
+    toConstraint: Constraint
+
+})
+
+export const Event = types.model("Event", {
+    event: types.identifier,
+    orgUnit: types.string,
+    program: types.string,
+    dataValues: types.array(DataValue),
+    relationships: types.optional(types.array(TrackedEntityInstance), []),
+    relatedTracker: types.maybe(types.reference(types.late(() => TrackedEntityInstanceStore))),
+    relationshipType: '',
+
+}).views(self => ({
+    get relatedEntities() {
+        const data = self.relationships.filter(r => {
+            return r.to.trackedEntityInstance
+        }).map(r => {
+            const { to: { trackedEntityInstance } } = r
+            const { attributes, ...rest } = trackedEntityInstance
+            const cols = fromPairs(attributes.map(a => {
+                return [a.attribute, a.value]
+            }));
+
+            return { ...cols, ...rest }
+        });
+        return data;
+    }
+})).actions(self => {
+    const fetchRelationShips = flow(function* () {
+        const api = getRoot(self).d2.Api.getApi();
+        self.loading = true;
+        try {
+            const relationships = yield api.get('relationships.json', { event: self.event });
+            console.log(relationships);
+            self.relationships = relationships;
+        } catch (error) {
+            console.error("Failed to fetch projects", error);
+            self.state = "error"
+        }
+        self.loading = false;
+    });
+
+    const addRelationShip = flow(function* (to) {
+        const api = getRoot(self).d2.Api.getApi();
+        self.loading = true;
+
+        const payload = {
+            relationshipType: self.relationshipType,
+            from: {
+                event: {
+                    event: self.event
+                }
+            },
+            to
+        }
+        try {
+            yield api.post('relationships', payload);
+
+        } catch (error) {
+            console.error("Failed to fetch projects", error);
+            self.state = "error"
+        }
+        self.loading = false;
+    });
+
+    const setRelatedTracker = (tracker) => self.relatedTracker = tracker;
+    const setRelationshipType = (relationshipType) => self.relationshipType = relationshipType;
+
+    return {
+        fetchRelationShips,
+        setRelatedTracker,
+        addRelationShip,
+        setRelationshipType
+    }
+});
+
+
+export const Enrollment = types.model("Enrollment", {
+    enrollment: types.string,
+    orgUnit: types.string,
+    program: types.string,
+    enrollmentDate: types.string,
+    incidentDate: types.string,
+    created: types.string,
+    trackedEntityType: types.string,
+    events: types.array(Event)
+});
+
+export const DataElement = types.model("DataElement", {
+    id: types.string,
+    name: types.string,
+    optionSet: types.maybeNull(OptionSet),
+    valueType: types.string
+});
+
+export const ProgramStageDataElement = types.model("ProgramStageDataElement", {
+    id: types.string,
+    compulsory: false,
+    dataElement: DataElement
+});
+
+export const ProgramStage = types.model('ProgramStage', {
+    id: types.string,
+    name: types.string,
+    programStageDataElements: types.array(ProgramStageDataElement)
+})
+export const EventStore = types.model("EventStore", {
+    events: types.optional(types.array(Event), []),
+    program: types.identifier,
+    page: 1,
+    pageSize: 10,
+    total: 0,
+    sorter: 'created:desc',
+    programStages: types.array(ProgramStage),
+    relatedProgram: types.maybe(types.reference(types.late(() => EventStore))),
+    instance: '',
+    relatedDataElement: '',
+    currentEvent: types.maybe(Event),
+}).views(self => ({
+    get store() {
+        return getParent(self)
+    },
+    get columns() {
+        const programStage = self.programStages[0];
+        const defaultColumns = programStage.programStageDataElements.map(de => {
+            return {
+                title: de.dataElement.name,
+                dataIndex: de.dataElement.id,
+                key: de.dataElement.id,
+                isRelationship: de.dataElement.id === self.relatedDataElement
+            }
+        });
+
+        return [...defaultColumns, {
+            title: 'Actions',
+            render: (text, record) => {
+                const menu = (
+                    <Menu>
+                        <Menu.Item key="1" onClick={() => self.store.router.setView(views.events, { event: record.event })}>
+                            {/* <Link router={self.store.router} view={views.activity} params={{ activity: record.instance }}> */}
+                            <Icon type="user" />
+                            1st menu item
+                                {/* </Link> */}
+                        </Menu.Item>
+                        <Menu.Item key="2">
+                            <Link router={self.store.router} view={views.activities}>
+                                <Icon type="user" />
+                                <Icon type="user" />
+                                2nd menu item
+                                </Link>
+                        </Menu.Item>
+                        <Menu.Item key="3">
+                            <Link router={self.store.router} view={views.activities}>
+                                <Icon type="user" />
+                                <Icon type="user" />
+                                3rd item
+                                </Link>
+                        </Menu.Item>
+                    </Menu>
+                )
+                return <Dropdown overlay={menu}>
+                    <Icon type="more" style={{ fontSize: '24px' }} />
+                </Dropdown>
+            }
+        }]
+    },
+    get data() {
+        return self.events.map(event => {
+            let { dataValues, ...rest } = event
+            dataValues = dataValues.map(d => {
+                return [d.dataElement, d.value]
+            });
+
+            return { ...rest, ...fromPairs(dataValues) };
+        });
+
+    },
+    get formColumns() {
+        const programStage = self.programStages[0];
+        const columns = programStage.programStageDataElements.map(a => {
+            const { compulsory: mandatory, dataElement: { valueType } } = a;
+            return {
+                title: a.dataElement.name,
+                dataIndex: a.dataElement.id,
+                key: a.dataElement.id,
+                mandatory,
+                valueType: a.dataElement.id === 'lX4Ae98tFFl' ? 'HTML' : valueType,
+                isRelationship: a.dataElement.id === self.relatedDataElement,
+                optionSet: a.dataElement.optionSet
+            }
+        });
+
+        return [...columns, {
+            key: 'assignedUser',
+            title: 'Assigned to',
+            mandatory: true,
+            valueType: '',
+            optionSet: null,
+            searchUsers: true
+        }]
+    }
+})).actions(self => {
+    const fetchProgramStages = flow(function* () {
+        const api = getRoot(self).d2.Api.getApi();
+        try {
+            const { programStages } = yield api.get(`programs/${self.program}`, {
+                fields: 'programStages[id,name,programStageDataElements[id,compulsory,dataElement[id,name,valueType,optionSet[options[name,code]]]]]'
+            });
+            self.programStages = programStages;
+        } catch (error) {
+            console.error("Failed to fetch projects", error);
+            self.state = "error"
+        }
+    });
+
+    const fetchEvents = flow(function* () {
+        const api = getRoot(self).d2.Api.getApi();
+        self.loading = true;
+
+        try {
+            let defaults = {
+                totalPages: true,
+                pageSize: self.pageSize,
+                order: self.sorter,
+                ouMode: 'ALL',
+                fields: '*'
+            }
+
+            if (self.instance !== '') {
+                defaults = {
+                    ...defaults,
+                    trackedEntityInstance: self.instance
+                }
+            } else {
+                defaults = {
+                    ...defaults,
+                    program: self.program,
+
+                }
+            }
+            const { events, pager } = yield api.get('events.json', defaults);
+            self.total = pager.total;
+            self.events = events
+        } catch (error) {
+            console.error("Failed to fetch projects", error);
+            self.state = "error"
+        }
+        self.loading = false;
+    });
+
+    const addProject = flow(function* (data) {
+        const api = getRoot(self).d2.Api.getApi();
+
+        const { organisationUnits, assignedUser, ...others } = data;
+
+        self.loading = true;
+
+        const dataValues = Object.keys(others).map(dataElement => {
+            return { dataElement, value: data[dataElement] };
+        });
+
+        let events = []
+
+        if (organisationUnits && organisationUnits.length > 0) {
+
+            events = organisationUnits.map(ou => {
+                let event = {
+                    eventDate: new Date().toISOString(),
+                    status: 'COMPLETED',
+                    completedDate: new Date().toISOString(),
+                    program: self.program,
+                    orgUnit: ou,
+                    dataValues,
+                    programStage: self.programStages[0].id
+                }
+                if (self.instance) {
+                    event = { ...event, trackedEntityInstance: self.instance }
+                }
+
+                return event;
+            });
+        } else {
+            let event = {
+                eventDate: new Date().toISOString(),
+                status: 'COMPLETED',
+                completedDate: new Date().toISOString(),
+                program: self.program,
+                orgUnit: self.store.orgUnit,
+                dataValues,
+                programStage: self.programStages[0].id
+            }
+
+            if (self.instance) {
+                event = { ...event, trackedEntityInstance: self.instance }
+            }
+
+            events = [event]
+        }
+
+
+
+        try {
+            yield api.post('events', { events });
+            // switch (self.program) {
+            //     case 'TTg5i4JO3U6':
+            //         self.store.router.setView(views.projects, {})
+            //         break;
+            //     case 'nqnAO1d0ilV':
+            //         self.store.router.setView(views.objectives, {})
+            //         break;
+            //     case 'lfBEzT9gvOW':
+            //         self.store.router.setView(views.resultAreas, {})
+            //         break;
+            //     case 'FCs73yoYfWp':
+            //         self.store.router.setView(views.outputs, {})
+            //         break;
+
+            //     case 'yAYNtTb7B03':
+            //         self.store.router.setView(views.activityData, {})
+            //         break;
+            //     default:
+            //         console.log('None')
+
+            // }
+        } catch (error) {
+            console.error("Failed to fetch projects", error);
+            self.state = "error"
+        }
+        self.loading = false;
+    });
+
+    const setProgram = (program) => self.program = program;
+    const setRelatedProgram = (program) => self.relatedProgram = program;
+    const setRelatedDataElement = (dataElement) => self.relatedDataElement = dataElement;
+    const setInstance = (instance) => self.instance = instance;
+    const searchEvent = flow(function* (id) {
+        const api = getRoot(self).d2.Api.getApi();
+        return yield api.get(`events/${id}.json`);
+    });
+
+    const setCurrentEvent = (event) => {
+        self.currentEvent = event
+    }
+
+
+    return {
+        fetchProgramStages,
+        fetchEvents,
+        addProject,
+        setProgram,
+        setRelatedProgram,
+        setRelatedDataElement,
+        setInstance,
+        setCurrentEvent,
+        searchEvent
+    }
+});
+export const TrackedEntityInstance = types.model("TrackedEntityInstance", {
+    trackedEntityInstance: types.identifier,
+    enrollments: types.optional(types.array(Enrollment), []),
+    orgUnit: types.string,
+    trackedEntityType: types.string,
+    attributes: types.array(Attribute),
+}).actions(self => ({
+}));
+
+
+
+export const TrackedEntityInstanceStore = types.model("TrackedEntityInstanceStore", {
+    program: types.identifier,
+    trackedEntityInstances: types.array(TrackedEntityInstance),
+    page: 1,
+    pageSize: 3,
+    total: 0,
+    loading: false,
+    attributes: types.optional(types.array(ProgramTrackedEntityAttributes), []),
+    sorter: 'created:desc',
+    selectedUnits: types.optional(types.array(types.frozen()), []),
+    currentInstance: types.maybe(types.reference(TrackedEntityInstance)),
+}).views(self => ({
+    get store() {
+        return getParent(self)
+    },
+    get data() {
+        return self.trackedEntityInstances.map(trackedEntityInstance => {
+            const attributes = fromPairs(trackedEntityInstance.attributes.map(a => {
+                return [a.attribute, a.value]
+            }));
+
+            const color = attributes['qxnGOCHbKAS'] === 'New' ? 'yellow' : 'red'
+            return { ...trackedEntityInstance, ...attributes, color }
+        });
+    },
+    get attributeColumns() {
+        return self.headers.filter(r => {
+            const attributes = self.attributes.map(a => a.trackedEntityAttribute.id);
+            return attributes.indexOf(r.name) !== -1
+        });
+    },
+    get defaultColumns() {
+        return self.headers.filter(r => {
+            const attributes = self.attributes.map(a => a.trackedEntityAttribute.id);
+            return attributes.indexOf(r.name) === -1
+        });
+    },
+    get formColumns() {
+        const columns = self.attributes.map(a => {
+            const { mandatory, valueType } = a;
+            return {
+                key: a.trackedEntityAttribute.id,
+                title: a.trackedEntityAttribute.name,
+                dataIndex: a.trackedEntityAttribute.id,
+                mandatory,
+                valueType,
+                optionSet: a.trackedEntityAttribute.optionSet
+            }
+        })
+
+        return [...columns, {
+            key: 'assignedUser',
+            title: 'Assigned to',
+            mandatory: true,
+            valueType: '',
+            optionSet: null,
+            searchUsers: true
+        }]
+    },
+    get stageColumns() {
+        return self.currentInstance.eventStore.columns
+    },
+    get columns() {
+        return [
+            ...self.formColumns,
+            {
+                title: 'Actions',
+                render: (text, record) => {
+                    const menu = (
+                        <Menu>
+                            <Menu.Item key="1" onClick={() => self.setCurrentInstance(record)}>
+                                {/* <Link router={self.store.router} view={views.activity} params={{ activity: record.instance }}> */}
+                                <Icon type="user" />
+                                1st menu item {record.color}
+                                {/* </Link> */}
+                            </Menu.Item>
+                            <Menu.Item key="2">
+                                <Link router={self.store.router} view={views.activities}>
+                                    <Icon type="user" />
+                                    <Icon type="user" />
+                                    2nd menu item
+                                    </Link>
+                            </Menu.Item>
+                            <Menu.Item key="3">
+                                <Link router={self.store.router} view={views.activities}>
+                                    <Icon type="user" />
+                                    <Icon type="user" />
+                                    3rd item
+                                    </Link>
+                            </Menu.Item>
+                        </Menu>
+                    )
+                    return <Dropdown overlay={menu}>
+                        <Icon type="more" style={{ fontSize: '24px' }} />
+                    </Dropdown>
+                }
+            }
+        ]
+    }
+})).actions(self => {
+    const fetchTrackedEntityInstances = flow(function* () {
+        const api = getRoot(self).d2.Api.getApi();
+        self.loading = true;
+        try {
+            const { trackedEntityInstances, pager: { total } } = yield api.get('trackedEntityInstances.json', {
+                program: self.program,
+                totalPages: true,
+                pageSize: self.pageSize,
+                order: self.sorter,
+                ouMode: 'ALL',
+                fields: '*'
+            });
+            self.total = total;
+            self.trackedEntityInstances = trackedEntityInstances
+
+
+
+        } catch (error) {
+            console.error("Failed to fetch projects", error);
+            self.state = "error"
+        }
+        self.loading = false;
+    });
+
+    const findData = flow(function* (activity) {
+        const api = getRoot(self).d2.Api.getApi();
+        try {
+            const { dataValues } = yield api.get(`events/${activity}.json`, {});
+
+            const activities = fromPairs(dataValues.map(d => {
+                return [d.dataElement, d.value]
+            }));
+
+
+
+            const { dataValues: data } = yield api.get(`events/${activities['Cwu1KVVPMzp']}.json`, {});
+
+            const resultAreas = fromPairs(data.map(d => {
+                return [d.dataElement, d.value]
+            }));
+
+            const { dataValues: data1 } = yield api.get(`events/${resultAreas['Z0oFe9Y0AkF']}.json`, {});
+
+            const objectives = fromPairs(data1.map(d => {
+                return [d.dataElement, d.value]
+            }));
+            const { dataValues: data2 } = yield api.get(`events/${objectives['fWpwKdGRp9r']}.json`, {});
+
+            const projects = fromPairs(data2.map(d => {
+                return [d.dataElement, d.value]
+            }));
+
+            self.otherData = {
+                R6fQYmqE2a7: projects['UeKCu1x6gC1'],
+                IvU5WlAUioy: objectives['UeKCu1x6gC1'],
+                jfB1imcdlXr: resultAreas['UeKCu1x6gC1'],
+                aZuLz2kDasY: activities['UeKCu1x6gC1'],
+                cyEYXCpq7iK: activities['cIfzworL5Kj']
+            }
+        } catch (error) {
+            console.error("Failed to fetch projects", error);
+            self.state = "error"
+        }
+    });
+
+
+    const addTrackedEntityInstance = flow(function* (data) {
+        const api = getRoot(self).d2.Api.getApi();
+
+        self.loading = true;
+
+        const { organisationUnits, assignedUser, activity, trackedEntityInstance, enrollment, events, ...others } = data;
+
+        const attributes = Object.keys(others).map(attribute => {
+            return { attribute, value: data[attribute] };
+        });
+
+        const date = new Date().toISOString()
+
+        const trackedEntityInstances = organisationUnits.map(orgUnit => {
+            let currentEnrollment = {
+                orgUnit,
+                program: self.program,
+                enrollmentDate: date,
+                incidentDate: date
+            }
+            if (enrollment) {
+                currentEnrollment = { ...currentEnrollment, enrollment }
+            }
+            let tei = {
+                orgUnit,
+                trackedEntityType: self.trackedEntityType,
+                assignedUser,
+                attributes,
+                enrollments: [currentEnrollment]
+            }
+
+            if (trackedEntityInstance) {
+                tei = { ...tei, trackedEntityInstance }
+            }
+            return tei;
+        });
+
+        try {
+            yield api.post('trackedEntityInstances', { trackedEntityInstances });
+            // switch (self.program) {
+            //     case 'Y7SLdPodxhM':
+            //         self.store.router.setView(views.activities, {})
+            //         break;
+            //     case 'p12qwBMhK3c':
+            //         self.store.router.setView(views.issues, {})
+            //         break;
+            //     default:
+            //         console.log('None')
+
+            // }
+        } catch (error) {
+            console.error("Failed to fetch projects", error);
+            self.state = "error";
+
+        }
+        self.loading = false;
+    });
+
+    const fetchAttributes = flow(function* () {
+        const api = getRoot(self).d2.Api.getApi();
+
+        try {
+            const { programTrackedEntityAttributes } = yield api.get(`programs/${self.program}`, {
+                fields: 'programTrackedEntityAttributes[mandatory,valueType,trackedEntityAttribute[id,name,unique,optionSet[options[name,code]]]]'
+            });
+            self.attributes = programTrackedEntityAttributes;
+        } catch (error) {
+            console.error("Failed to fetch projects", error);
+            self.state = "error"
+        }
+    });
+
+    const handleChange = flow(function* (pagination, filters, sorter) {
+        self.loading = true;
+        const order = sorter.field && sorter.order ? `${sorter.field}:${sorter.order === 'ascend' ? 'asc' : 'desc'}` : 'created:desc';
+        const page = pagination.pageSize !== self.pageSize || order !== self.sorter ? 1 : pagination.current;
+        self.sorter = order;
+        const api = getRoot(self).d2.Api.getApi();
+        try {
+            const { trackedEntityInstances, pager: { total, pageSize } } = yield api.get('trackedEntityInstances.json', {
+                program: self.program,
+                totalPages: true,
+                pageSize: pagination.pageSize,
+                order,
+                page,
+                ouMode: 'ALL',
+                fields: '*'
+            });
+            // self.headers = headers.map((h, i) => {
+            //     return { ...h, index: i }
+            // });
+            // const found = rows.map(r => {
+            //     const entity = Object.assign.apply({}, self.defaultColumns.map(v => ({
+            //         [v.name]: r[v.index]
+            //     })));
+            //     const attributes = self.attributeColumns.map(h => {
+            //         return { attribute: h.name, value: r[h.index] }
+            //     });
+
+            //     return { ...entity, attributes }
+            // });
+
+            self.total = total;
+            self.pageSize = pageSize;
+            self.trackedEntityInstances = trackedEntityInstances
+
+        } catch (error) {
+            console.error("Failed to fetch projects", error);
+            self.state = "error"
+        }
+        self.loading = false;
+    });
+
+    const setProgram = (program) => self.program = program;
+    const setSelectedUnits = (units) => self.selectedUnits = units;
+    const addInstance = (instance) => {
+        const found = self.trackedEntityInstances.find(i => {
+            return i.instance === instance.instance;
+        })
+
+        if (!found) {
+            self.trackedEntityInstances = [...self.trackedEntityInstances, instance];
+        }
+
+    }
+    const setCurrentInstance = (instance) => {
+        // self.currentInstance = self.trackedEntityInstances.find(i => i.instance === instance.instance);
+        // self.store.router.setView(views.activity, { activity: instance.instance })
+        self.currentInstance = instance
+    }
+
+    const setDetails = async (instance) => {
+        self.addInstance(instance);
+
+        const found = self.trackedEntityInstances.find(i => {
+            return i.instance === instance.instance;
+        });
+        self.setCurrentInstance(found);
+        self.currentInstance.setProgram(self.program);
+        self.currentInstance.setEventStore();
+        await self.currentInstance.eventStore.fetchProgramStages();
+        await self.currentInstance.eventStore.fetchEvents();
+    }
+
+    return {
+        fetchTrackedEntityInstances,
+        fetchAttributes,
+        handleChange,
+        setProgram,
+        findData,
+        setSelectedUnits,
+        addTrackedEntityInstance,
+        setCurrentInstance,
+        addInstance,
+        setDetails
+    }
+});
