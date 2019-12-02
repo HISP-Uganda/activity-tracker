@@ -107,6 +107,19 @@ export const Row = types.model('Row', {
         })
     },
 
+    get report() {
+        const events = self.programStageData['gCp6ffVmx0g'] || [];
+        const reports = events.map(({ dataValues, ...e }) => {
+            const dv = dataValues.map(d => [d.dataElement, d.value]);
+            return { ...e, ...fromPairs(dv) }
+        });
+
+        if (reports.length > 0) {
+            return reports[0]
+        }
+        return {};
+    },
+
     get currentIssueNumbers() {
         return self.issues.map(i => {
             return { code: i['fdlUSNSkcO5'], name: i['fdlUSNSkcO5'] };

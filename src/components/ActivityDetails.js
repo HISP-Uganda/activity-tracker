@@ -10,7 +10,10 @@ import {
     Button,
     Upload,
     Table,
-    Descriptions
+    Descriptions,
+    List,
+    Input,
+    Comment
 } from 'antd';
 import { Link } from '../modules/router';
 import views from '../config/views';
@@ -20,6 +23,29 @@ import { DrawerForm } from './forms/DrawerForm';
 
 
 const { Header, Content } = Layout;
+const { TextArea } = Input;
+
+const CommentList = ({ comments }) => (
+    <List
+        dataSource={comments}
+        header={`${comments.length} ${comments.length > 1 ? 'replies' : 'reply'}`}
+        itemLayout="horizontal"
+        renderItem={props => <Comment {...props} />}
+    />
+);
+
+const Editor = ({ onChange, onSubmit, submitting, value }) => (
+    <div>
+        <Form.Item>
+            <TextArea rows={4} onChange={onChange} value={value} />
+        </Form.Item>
+        <Form.Item>
+            <Button htmlType="submit" loading={submitting} onClick={onSubmit} type="primary">
+                Add Comment
+        </Button>
+        </Form.Item>
+    </div>
+);
 
 const BForm = ({ store, form }) => {
 
@@ -109,8 +135,8 @@ const BForm = ({ store, form }) => {
                         <Card title="Report Details">
                             <Form {...layouts.formItemLayout} onSubmit={handleSubmit}>
                                 {store.report.form.map(s => {
-                                    if (store.currentRow.previousReport[s.key]) {
-                                        return displayField(s, getFieldDecorator, { initialValue: store.currentRow.previousReport[s.key] })
+                                    if (store.currentRow.report[s.key]) {
+                                        return displayField(s, getFieldDecorator, { initialValue: store.currentRow.report[s.key] })
                                     }
                                     return displayField(s, getFieldDecorator, {})
                                 })}
@@ -135,6 +161,7 @@ const BForm = ({ store, form }) => {
                         </Card>
                         &nbsp;
                         <Card title="Report Comments">
+                            <pre>{JSON.stringify(store.currentRow.report, null, 2)}</pre>
                         </Card>
                     </Col>
 
@@ -176,8 +203,8 @@ const BForm = ({ store, form }) => {
                                 }}
                             />
                         </Card>
-                        <DrawerForm visible={store.issueDialogOpen} formColumns={store.issue.form} onSubmit={onSubmit} onClose={store.hideIssueDialog} />
-                        <DrawerForm visible={store.actionDialogOpen} formColumns={store.action.form} onSubmit={onActionSubmit} onClose={store.hideActionDialog} />
+                        <DrawerForm title="New Issue" visible={store.issueDialogOpen} formColumns={store.issue.form} onSubmit={onSubmit} onClose={store.hideIssueDialog} />
+                        <DrawerForm title="New Action" visible={store.actionDialogOpen} formColumns={store.action.form} onSubmit={onActionSubmit} onClose={store.hideActionDialog} />
                     </Col>
                 </Row>
             </Content>

@@ -19,7 +19,7 @@ const { TextArea } = Input;
 const { Option: AutoOption } = AutoComplete;
 
 
-const DrawerF = ({ store, form, visible, onSubmit, onClose, formColumns }) => {
+const DrawerF = ({ store, form, visible, onSubmit, onClose, formColumns, title }) => {
 
     const handleSubmit = e => {
         e.preventDefault();
@@ -124,7 +124,7 @@ const DrawerF = ({ store, form, visible, onSubmit, onClose, formColumns }) => {
     const { getFieldDecorator } = form;
     return (
         <Drawer
-            title="Create a new account"
+            title={title}
             width="45%"
             visible={visible}
             onClose={close}
