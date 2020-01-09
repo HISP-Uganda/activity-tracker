@@ -23,16 +23,17 @@ const { Header, Content } = Layout;
 
 const { RangePicker } = DatePicker;
 
+
 const rangeConfig = {
     rules: [{ type: 'array', required: true, message: 'Please select time!' }],
 };
 
-const ProjectF = ({ store, form }) => {
+const IssueF = ({ store, form }) => {
     const { getFieldDecorator } = form;
-    const [units, setUnits] = useState(store.currentActivity.activityLocations);
+    const [units, setUnits] = useState([]);
     const [objectives, setObjectives] = useState([]);
     const [resultAreas, setResultAreas] = useState([]);
-    const [selected, setSelected] = useState([]);
+
     const handleSubmit = e => {
         e.preventDefault();
         form.validateFieldsAndScroll(async (err, values) => {
@@ -57,19 +58,14 @@ const ProjectF = ({ store, form }) => {
                 if (!rest['XdmZ9lk11i4']) {
                     rest = {
                         ...rest,
-                        XdmZ9lk11i4: store.currentActivity.transactionCode
+                        XdmZ9lk11i4: shortid.generate()
                     }
                 }
 
                 let newOus = []
 
                 organisationUnits.forEach(ou => {
-                    const instance = store.currentActivity.fieldActivityLocations.find(fl => fl.orgUnit === ou);
-                    let others = {}
-                    if (instance) {
-                        others = { ...others, trackedEntityInstance: instance.trackedEntityInstance }
-                    }
-                    newOus = [...newOus, { ou, dates: rest[ou], ...others }];
+                    newOus = [...newOus, { ou, dates: rest[ou] }];
                     rest = Object.keys(rest).reduce((object, key) => {
                         if (key !== ou) {
                             object[key] = rest[key]
@@ -110,11 +106,12 @@ const ProjectF = ({ store, form }) => {
         const processed = events.map(({ dataValues }) => {
             return fromPairs(dataValues.map(d => [d.dataElement, d.value]))
         });
+
         const objectives = uniq(processed.map(x => x['B9cvWgxoOtK'])).map(v => {
             return { code: v, name: v }
         });
-        setObjectives(processed);
         addOptions('dPEK5RaFqLx', objectives);
+        setObjectives(processed);
     }
 
     const onSelectObjective = (val) => {
@@ -152,12 +149,11 @@ const ProjectF = ({ store, form }) => {
                 <Card title="Planned Activities">
                     <Form {...layouts.formItemLayout} onSubmit={handleSubmit}>
                         <Form.Item {...layouts.tailFormItemLayout}>
-                            <UnitDialog onUpdate={handleOrgUnitChange} selected={selected} setSelected={setSelected} />
+                            <UnitDialog onUpdate={handleOrgUnitChange} />
                         </Form.Item>
                         <Form.Item label="Selected Sites">
                             {getFieldDecorator('organisationUnits', {
                                 rules: [{ required: true, message: `Please input` }],
-                                initialValue: units.map(o => o.id)
                             })(<Select
                                 disabled
                                 mode="multiple"
@@ -175,20 +171,17 @@ const ProjectF = ({ store, form }) => {
                         {store.plannedActivity.form.map(f => {
                             switch (f.key) {
                                 case 'fXVrCt5zPf7':
-                                    return <DisplayField key={f.key} field={f} getFieldDecorator={getFieldDecorator} onSelect={onSelectProject} initialValue={store.currentActivity.activityAttributes[f.key]} />
+                                    return <DisplayField key={f.key} field={f} getFieldDecorator={getFieldDecorator} onSelect={onSelectProject} />
                                 case 'dPEK5RaFqLx':
-                                    return <DisplayField key={f.key} field={f} getFieldDecorator={getFieldDecorator} onSelect={onSelectObjective} initialValue={store.currentActivity.activityAttributes[f.key]} placeholder="Type some text to see suggestions" />
+                                    return <DisplayField key={f.key} field={f} getFieldDecorator={getFieldDecorator} onSelect={onSelectObjective} />
                                 case 'vIlcCjuhlUG':
-                                    return <DisplayField key={f.key} field={f} getFieldDecorator={getFieldDecorator} onSelect={onSelectResultArea} initialValue={store.currentActivity.activityAttributes[f.key]} placeholder="Type some text to see suggestions"/>
-                                case 'le0A6qC3Oap':
-                                    return <DisplayField key={f.key} field={f} getFieldDecorator={getFieldDecorator} initialValue={store.currentActivity.activityAttributes[f.key]} placeholder="Type some text to see suggestions"/>
+                                    return <DisplayField key={f.key} field={f} getFieldDecorator={getFieldDecorator} onSelect={onSelectResultArea} />
                                 default:
-                                    return <DisplayField key={f.key} field={f} getFieldDecorator={getFieldDecorator} initialValue={store.currentActivity.activityAttributes[f.key]} />
+                                    return <DisplayField key={f.key} field={f} getFieldDecorator={getFieldDecorator} />
                             }
                         })}
                         <Form.Item label="Schedules">
                             <table width="100%">
-
                                 <thead>
                                     <tr>
                                         <th>Organisation</th>
@@ -201,16 +194,17 @@ const ProjectF = ({ store, form }) => {
                                             <td>{item.displayName}</td>
                                             <td>
                                                 <Form.Item >
-                                                    {getFieldDecorator(item.id, { ...rangeConfig, initialValue: store.currentActivity.activityLocationsDates[item.id] })(<RangePicker size="large" />)}
+                                                    {getFieldDecorator(item.id, rangeConfig)(<RangePicker size="large" />)}
                                                 </Form.Item>
                                             </td>
                                         </tr>
                                     ))}
+
                                 </tbody>
                             </table>
                         </Form.Item>
                         <Form.Item {...layouts.tailFormItemLayout}>
-                            <Button type="primary" htmlType="submit" size="large">Save Planned Activity</Button>
+                            <Button type="primary" htmlType="submit" size="large">Add Planned Activity</Button>
                         </Form.Item>
                     </Form>
                 </Card>
@@ -220,4 +214,4 @@ const ProjectF = ({ store, form }) => {
     );
 };
 
-export const PlannedActivityForm = Form.create({ name: 'register' })(inject("store")(observer(ProjectF)));
+export const IssueForm = Form.create({ name: 'issueForm' })(inject("store")(observer(IssueF)));

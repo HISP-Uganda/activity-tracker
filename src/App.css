@@ -28,8 +28,9 @@ progress,
   background-color: #dadd98;
 }
 
+.Resolved,
 .ReportApproved {
-  background-color: #4b6f44;
+  background-color: darkgreen;
 }
 
 .ReportSubmitted {

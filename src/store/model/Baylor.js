@@ -1,8 +1,8 @@
 import { types, flow, getRoot, getParent } from "mobx-state-tree";
 import React from 'react';
-import { unionBy, fromPairs, flatten, groupBy } from 'lodash';
+import { unionBy, fromPairs, flatten, uniq, groupBy, range, intersection, keys, min } from 'lodash';
 import moment from 'moment';
-
+import { generateUid } from '../../utils'
 import { Icon, Menu, Dropdown, Button } from 'antd';
 import views from '../../config/views'
 
@@ -85,11 +85,6 @@ export const Row = types.model('Row', {
         return { ...attributes, organisationUnits: [self.data[ouIndex]], trackedEntityInstance: self.data[0] }
     },
 
-    get programStageData() {
-        const enrollment = self.event.enrollments[0];
-        return groupBy(enrollment.events, 'programStage');
-    },
-
     get previousReport() {
         const events = self.programStageData['gCp6ffVmx0g']
         if (events) {
@@ -97,14 +92,6 @@ export const Row = types.model('Row', {
             return fromPairs(e);
         }
         return {}
-    },
-
-    get issues() {
-        const events = self.programStageData['qky1qGVPe7e'] || [];
-        return events.map(({ dataValues, ...e }) => {
-            const dv = dataValues.map(d => [d.dataElement, d.value]);
-            return { ...e, ...fromPairs(dv) }
-        })
     },
 
     get report() {
@@ -118,12 +105,6 @@ export const Row = types.model('Row', {
             return reports[0]
         }
         return {};
-    },
-
-    get currentIssueNumbers() {
-        return self.issues.map(i => {
-            return { code: i['fdlUSNSkcO5'], name: i['fdlUSNSkcO5'] };
-        }).filter(i => !!i);
     },
     get actions() {
         const events = self.programStageData['eXOOIxW2cAZ'] || [];
@@ -218,6 +199,7 @@ export const Row = types.model('Row', {
         }
     },
     get disableSubmit() {
+        console.log(self.activityStatus);
         return self.activityStatus === 'Report Approved'
     },
     get canFinishImplementing() {
@@ -242,14 +224,6 @@ export const Row = types.model('Row', {
     afterCreate: flow(function* () {
         // yield self.fetchEvents()
     }),
-    updateActivityStatus: flow(function* (status) {
-        if (self.activityStatusIndex !== -1) {
-            self.data[self.activityStatusIndex] = status;
-            const program = getParent(self, 2);
-            yield program.updateTrackedEntityInstance(self.getAttributes);
-            yield program.refresh()
-        }
-    }),
     fetchEvents: flow(function* () {
         const store = getRoot(self);
         const api = store.d2.Api.getApi();
@@ -257,7 +231,6 @@ export const Row = types.model('Row', {
             fields: '*',
             program: store.plannedActivity.id
         });
-
         self.event = event;
     }),
 }));
@@ -265,7 +238,7 @@ export const Row = types.model('Row', {
 export const ProgramStage = types.model('ProgramStage', {
     id: '',
     page: 1,
-    pageSize: 5,
+    pageSize: 10,
     total: 0,
     sorter: 'created:desc',
     headers: types.array(Header),
@@ -274,8 +247,107 @@ export const ProgramStage = types.model('ProgramStage', {
     related: types.maybe(types.late(() => ProgramStage)),
     hidden: types.optional(types.array(types.string), []),
     instance: '',
-    row: types.optional(Row, {})
+    row: types.optional(Row, {}),
+    events: types.optional(types.frozen(), []),
+    actionForm: types.optional(types.frozen(), []),
+    currentIssue: types.optional(types.frozen(), {})
 }).views(self => ({
+    get issueColumns() {
+
+        const activityColumn = {
+            key: 'le0A6qC3Oap',
+            title: 'Activity',
+            dataIndex: 'le0A6qC3Oap'
+        };
+
+        const issueColumn = {
+            key: 'POFNc2t3zCO',
+            title: 'Issue',
+            dataIndex: 'POFNc2t3zCO'
+        };
+
+        const registrationColumn = {
+            key: 'eventDate',
+            title: 'Registered on',
+            dataIndex: 'eventDate',
+            render: (text) => {
+                return <div>{moment(text).format('DD/MM/YYYY')}</div>
+            }
+        };
+
+        const reportedIn = {
+            key: 'orgUnitName',
+            title: 'Registered in',
+            dataIndex: 'orgUnitName'
+        };
+        const reportedBy = {
+            key: 'storedBy',
+            title: 'Reported by',
+            dataIndex: 'storedBy'
+        };
+        const responsibleColumn = {
+            key: 'UugBQHvPTZ3',
+            title: 'Responsible person',
+            dataIndex: 'UugBQHvPTZ3'
+        };
+        const issueStatusColumn = {
+            key: 'b3KvFkSwZLn',
+            title: 'Issue status',
+            dataIndex: 'b3KvFkSwZLn',
+            render: (text, row) => {
+                return {
+                    props: {
+                        className: text,
+                    },
+                    children: <div>{text}</div>,
+                };
+            }
+        };
+
+        const actionColumn = {
+            title: 'Actions',
+            key: 'Actions',
+            render: (text, record) => {
+                let l = [];
+                l = [...l, <Menu.Item key="1" onClick={async () => console.log('current')}>
+                    Edit Issue
+                    </Menu.Item>]
+                l = [...l, <Menu.Item key="2" onClick={() => {
+                    const store = getRoot(self)
+                    let found = [];
+                    const issueKeys = keys(record);
+                    range(1, 11).forEach(i => {
+                        const searchColumns = store.issue.form.filter(s => { return String(s.title).endsWith(i) });
+                        const columnsKeys = searchColumns.map(c => c.key)
+                        const both = intersection(issueKeys, columnsKeys)
+                        if (both.length === 0) {
+                            found = [...found, i]
+                        }
+                    });
+                    const current = min(found);
+                    const form = store.issue.form.filter(s => { return String(s.title).endsWith(current) || s.key === 'b3KvFkSwZLn' })
+                    self.setActionForm(form);
+                    self.setCurrentIssue(record);
+                    store.showActionDialog();
+                }}>
+                    Add Action to Issue
+                    </Menu.Item>]
+                const menu = (
+                    <Menu>
+                        {l.map(m => m)}
+                    </Menu>
+                );
+                return <Dropdown overlay={menu} trigger={['click']}>
+                    <Button type="link">
+                        <Icon type="down" />
+                    </Button>
+                </Dropdown>
+            }
+        }
+
+        return [activityColumn, issueColumn, registrationColumn, reportedIn, reportedBy, responsibleColumn, issueStatusColumn, actionColumn]
+
+    },
     get nameAndCodeColumn() {
         const codeIndex = self.headers.findIndex((x) => {
             return x.name === 'UeKCu1x6gC1'
@@ -287,7 +359,6 @@ export const ProgramStage = types.model('ProgramStage', {
         if (codeIndex !== -1 && nameIndex !== -1) {
             return { nameIndex, codeIndex }
         }
-
         return {}
     },
     get getData() {
@@ -300,14 +371,12 @@ export const ProgramStage = types.model('ProgramStage', {
             let value = null;
 
             if (deIndex !== -1) {
-                // console.log(JSON.stringify(self.rows));
+                console.log(JSON.stringify(self.rows));
                 // value = self.rows.data[deIndex];
             }
             return [a.dataElement.id, value];
         });
-
         return fromPairs(data);
-
     },
     get columns() {
         if (self.headers.length > 0 && self.rows.length > 0) {
@@ -321,6 +390,7 @@ export const ProgramStage = types.model('ProgramStage', {
                     dataIndex: a.name,
                     render: (text, row) => {
                         if (a.name === 'GeIEoCBrKaW') {
+                            console.log(row.currentStatus.cls)
                             return {
                                 props: {
                                     className: row.currentStatus.cls,
@@ -337,14 +407,13 @@ export const ProgramStage = types.model('ProgramStage', {
 
             if (self.id === 'qky1qGVPe7e') {
                 cols = cols.filter(c => {
-                    return ['fdlUSNSkcO5', 'POFNc2t3zCO'].indexOf(c.key) !== -1
+                    return ['fdlUSNSkcO5', 'POFNc2t3zCO', 'b3KvFkSwZLn', 'UugBQHvPTZ3', 'orgUnitName'].indexOf(c.key) !== -1
                 })
             } else if (self.id === 'eXOOIxW2cAZ') {
                 cols = cols.filter(c => {
                     return ['fdlUSNSkcO5', 'HF1r9NG0jNT'].indexOf(c.key) !== -1
                 })
             }
-
             return cols;
         } else {
             let cols = self.programStageDataElements.map(a => {
@@ -358,18 +427,63 @@ export const ProgramStage = types.model('ProgramStage', {
                 }
             });
 
+            cols = [...cols, {
+                key: 'orgUnitName',
+                title: 'Site',
+                dataIndex: 'orgUnitName',
+                render: (text) => {
+                    return <div>{text}</div>
+                }
+            }]
+
+            const actionColumn = {
+                title: 'Actions',
+                key: 'Actions',
+                render: (text, record) => {
+                    let l = [];
+                    l = [...l, <Menu.Item key="1" onClick={async () => console.log('current')}>
+                        Edit Issue
+                        </Menu.Item>]
+                    l = [...l, <Menu.Item key="2" onClick={() => {
+                        const store = getRoot(self)
+                        let found = [];
+                        const issueKeys = keys(record);
+                        range(1, 11).forEach(i => {
+                            const searchColumns = store.issue.form.filter(s => { return String(s.title).endsWith(i) });
+                            const columnsKeys = searchColumns.map(c => c.key)
+                            const both = intersection(issueKeys, columnsKeys)
+                            if (both.length === 0) {
+                                found = [...found, i]
+                            }
+                        });
+                        const current = min(found);
+                        const form = store.issue.form.filter(s => { return String(s.title).endsWith(current) || s.key === 'b3KvFkSwZLn' })
+                        self.setActionForm(form);
+                        self.setCurrentIssue(record);
+                        store.showActionDialog();
+                    }}>
+                        Add Action to Issue
+                        </Menu.Item>]
+                    const menu = (
+                        <Menu>
+                            {l.map(m => m)}
+                        </Menu>
+                    );
+                    return <Dropdown overlay={menu} trigger={['click']}>
+                        <Button type="link">
+                            <Icon type="down" />
+                        </Button>
+                    </Dropdown>
+                }
+            }
 
             if (self.id === 'qky1qGVPe7e') {
                 cols = cols.filter(c => {
-                    return ['fdlUSNSkcO5', 'POFNc2t3zCO'].indexOf(c.key) !== -1
-                })
-            } else if (self.id === 'eXOOIxW2cAZ') {
-                cols = cols.filter(c => {
-                    return ['fdlUSNSkcO5', 'HF1r9NG0jNT'].indexOf(c.key) !== -1
+                    return ['POFNc2t3zCO', 'b3KvFkSwZLn', 'UugBQHvPTZ3', 'orgUnitName'].indexOf(c.key) !== -1
                 })
             }
 
-            return cols
+            return [...cols, actionColumn]
 
         }
     },
@@ -448,6 +562,39 @@ export const ProgramStage = types.model('ProgramStage', {
         }
         self.loading = false;
     });
+
+    const fetchRawEvents = flow(function* () {
+        const api = getRoot(self).d2.Api.getApi();
+        self.loading = true;
+        let params = {
+            programStage: self.id,
+            totalPages: true,
+            pageSize: self.pageSize,
+            program: 'lINGRWR9UFx',
+            order: self.sorter,
+            ouMode: 'ALL'
+        }
+        try {
+            const { events, pager } = yield api.get('events.json', params);
+            self.total = pager.total;
+            const attributes = uniq(events.map(e => e.trackedEntityInstance)).join(';');
+
+            let { trackedEntityInstances } = yield api.get('trackedEntityInstances', { trackedEntityInstance: attributes });
+
+            const processedInstances = groupBy(trackedEntityInstances.map(({ attributes, ...rest }) => {
+                return { ...rest, ...fromPairs(attributes.map(a => [a.attribute, a.value])) }
+            }), 'trackedEntityInstance')
+
+            self.events = events.map(({ dataValues, ...e }) => {
+                return { ...e, ...fromPairs(dataValues.map(d => [d.dataElement, d.value])), ...processedInstances[e.trackedEntityInstance][0] }
+            });
+
+        } catch (error) {
+            console.error("Failed to fetch projects", error);
+            self.state = "error"
+        }
+        self.loading = false;
+    });
     const fetchInstanceEvents = flow(function* (trackedEntityInstance) {
         const api = getRoot(self).d2.Api.getApi();
         self.loading = true;
@@ -477,6 +624,19 @@ export const ProgramStage = types.model('ProgramStage', {
         }
         self.loading = false;
     });
+
+    const searchEventsByColumn = flow(function* (column, search) {
+        const api = getRoot(self).d2.Api.getApi();
+        const { events } = yield api.get('events', {
+            filter: `${column}:EQ:${search}`,
+            includeAllDataElements: true,
+            program: 'yAYNtTb7B03',
+            programStage: self.id,
+            paging: false,
+        });
+        return events
+
+    })
 
     const searchEvents = flow(function* (search) {
         const api = getRoot(self).d2.Api.getApi();
@@ -552,8 +712,55 @@ export const ProgramStage = types.model('ProgramStage', {
         }
         self.loading = false;
     });
+
+
+    const handleChangeRawEvents = flow(function* (pagination, filters, sorter) {
+
+        self.loading = true;
+        const order = sorter.field && sorter.order ? `${sorter.field}:${sorter.order === 'ascend' ? 'asc' : 'desc'}` : 'created:desc';
+        const page = pagination.pageSize !== self.pageSize || order !== self.sorter ? 1 : pagination.current;
+        self.sorter = order;
+        self.page = page;
+        self.pageSize = pagination.pageSize;
+
+        const api = getRoot(self).d2.Api.getApi();
+        self.loading = true;
+
+        let params = {
+            programStage: self.id,
+            totalPages: true,
+            pageSize: self.pageSize,
+            program: 'lINGRWR9UFx',
+            order: self.sorter,
+            ouMode: 'ALL',
+            page,
+        }
+        try {
+            const { events, pager } = yield api.get('events.json', params);
+            self.total = pager.total;
+            const attributes = uniq(events.map(e => e.trackedEntityInstance)).join(';');
+
+            let { trackedEntityInstances } = yield api.get('trackedEntityInstances', { trackedEntityInstance: attributes });
+
+            const processedInstances = groupBy(trackedEntityInstances.map(({ attributes, ...rest }) => {
+                return { ...rest, ...fromPairs(attributes.map(a => [a.attribute, a.value])) }
+            }), 'trackedEntityInstance')
+
+
+            self.events = events.map(({ dataValues, ...e }) => {
+                return { ...e, ...fromPairs(dataValues.map(d => [d.dataElement, d.value])), ...processedInstances[e.trackedEntityInstance][0] }
+            })
+        } catch (error) {
+            console.error("Failed to fetch projects", error);
+            self.state = "error"
+        }
+        self.loading = false;
+    });
     const setHidden = (values) => self.hidden = values;
     const setInstance = (values) => self.instance = values;
+    const setCurrentAction = val => self.currentAction = val;
+    const setActionForm = val => self.actionForm = val;
+    const setCurrentIssue = val => self.currentIssue = val;
 
     return {
         searchEvents,
@@ -563,9 +770,327 @@ export const ProgramStage = types.model('ProgramStage', {
         handleChange,
         fetchMetadata,
         setHidden,
-        setInstance
+        setInstance,
+        fetchRawEvents,
+        handleChangeRawEvents,
+        setCurrentAction,
+        setActionForm,
+        setCurrentIssue,
+        searchEventsByColumn
     }
-});;
+});
+
+export const FieldActivity = types.model('FieldActivity', {
+    transactionCode: '',
+    attributes: '',
+    trackedEntityInstances: types.optional(types.frozen(), []),
+    currentReport: ''
+}).views(self => ({
+    get columnAttributes() {
+        if (self.attributes) {
+            return JSON.parse(self.attributes);
+        }
+        return [];
+    },
+
+    get report() {
+        if (self.trackedEntityInstances.length > 0) {
+            const { enrollments } = self.trackedEntityInstances[0];
+            const { events } = enrollments[0];
+            if (events && events.length > 0) {
+                const foundEvent = events.find(e => e.programStage === 'gCp6ffVmx0g');
+                if (foundEvent) {
+                    return fromPairs(foundEvent.dataValues.map(dv => [dv.dataElement, dv.value]));
+                }
+            }
+        }
+        return {}
+    },
+
+    get activityAttributes() {
+        if (self.trackedEntityInstances.length > 0) {
+            const { attributes } = self.trackedEntityInstances[0];
+            return fromPairs(attributes.map(dv => [dv.attribute, dv.value]));
+        }
+        return {}
+    },
+
+    get reportId() {
+        if (self.trackedEntityInstances.length > 0) {
+            const { enrollments } = self.trackedEntityInstances[0];
+            const { events } = enrollments[0];
+            if (events && events.length > 0) {
+                const foundEvent = events.find(e => e.programStage === 'gCp6ffVmx0g');
+                if (foundEvent) {
+                    return foundEvent.event;
+                }
+            }
+        }
+        return ''
+    },
+
+    get activityLocations() {
+        return self.trackedEntityInstances.map(tei => {
+            const { enrollments } = tei;
+            const enrollment = enrollments[0]
+            return { id: tei.orgUnit, displayName: enrollment.orgUnitName }
+        });
+    },
+
+    get activityLocationsDates() {
+        let dates = {};
+        self.trackedEntityInstances.forEach(tei => {
+            const startDate = tei.attributes.find(a => a.attribute === 'eN9jthkmMds');
+            const endDate = tei.attributes.find(a => a.attribute === 'pyQEzpRRcqH');
+            dates = { ...dates, [tei.orgUnit]: [moment(startDate.value), moment(endDate.value)] }
+        });
+        return dates;
+    },
+
+    get reportIds() {
+        if (self.trackedEntityInstances.length > 0) {
+            const events = self.trackedEntityInstances.map(tei => {
+                const events = tei.enrollments.map(enrollment => {
+                    return enrollment.events.filter(e => e.programStage === 'gCp6ffVmx0g').map(({ event }) => {
+                        return { trackedEntityInstance: tei.trackedEntityInstance, event }
+                    })
+                });
+                return flatten(events)
+            });
+
+            return fromPairs(flatten(events).map(e => [e.trackedEntityInstance, e.event]))
+        }
+
+        return {};
+
+    },
+
+    get fieldActivityLocations() {
+        return self.trackedEntityInstances.map(tei => {
+            const { enrollments } = tei;
+            const { orgUnitName } = enrollments[0]
+            return {
+                orgUnit: tei.orgUnit,
+                trackedEntityInstance: tei.trackedEntityInstance,
+                orgUnitName,
+                program: tei.programOwners[0].program
+            }
+        })
+    },
+
+    get allIssues() {
+        const events = self.trackedEntityInstances.map(tei => {
+            const events = tei.enrollments.map(enrollment => {
+                return enrollment.events.filter(e => e.programStage === 'qky1qGVPe7e').map(({ dataValues, ...e }) => {
+                    return { ...e, ...fromPairs(dataValues.map(dv => [dv.dataElement, dv.value])) }
+                })
+            });
+
+            return flatten(events)
+        });
+
+        return flatten(events)
+    },
+
+    get allInstances() {
+        return self.trackedEntityInstances.map(({ enrollments, attributes, ...rest }) => {
+            const { orgUnitName } = enrollments[0]
+            return { ...rest, orgUnitName, ...fromPairs(attributes.map(dv => [dv.attribute, dv.value])) }
+        });
+
+    },
+
+    get activityStatus() {
+        return self.columnAttributes.GeIEoCBrKaW
+    },
+    get plannedStartDate() {
+        return moment(self.columnAttributes.eN9jthkmMds)
+    },
+    get currentStatus() {
+        let canImplement = false;
+        const today = moment();
+        let cls = '';
+
+        if (self.activityStatus === 'On Schedule' && self.plannedStartDate && self.plannedStartDate.diff(today, 'days') <= 0) {
+            cls = 'Overdue';
+        } else if (self.activityStatus === 'On Schedule' && self.plannedStartDate && self.plannedStartDate.diff(today, 'days') <= 7) {
+            cls = 'Upcoming';
+        }
+        else if (self.activityStatus === 'On Schedule' && self.plannedStartDate && self.plannedStartDate.diff(today, 'days') > 7) {
+            cls = 'OnSchedule';
+        } else if (self.activityStatus === 'Report Submitted') {
+            cls = 'ReportSubmitted';
+        } else if (self.activityStatus === 'Report Approved') {
+            cls = 'ReportApproved';
+        } else if (self.activityStatus === 'Ongoing') {
+            cls = 'Ongoing';
+        } else if (self.activityStatus === 'Implemented') {
+            cls = 'Implemented';
+        } else if (self.activityStatus === 'Upcoming') {
+            cls = 'Upcoming';
+        } else if (self.plannedStartDate && self.plannedStartDate.diff(today, 'days') <= 0) {
+            cls = 'Overdue';
+        } else if (self.plannedStartDate && self.plannedStartDate.diff(today, 'days') <= 7) {
+            cls = 'Upcoming';
+        } else if (self.plannedStartDate && self.plannedStartDate.diff(today, 'days') > 7) {
+            cls = 'OnSchedule';
+        }
+        if (self.activityStatus === 'Overdue' || self.activityStatus === 'Upcoming' || self.activityStatus === 'On Schedule' || !self.activityStatus) {
+            canImplement = true;
+        }
+        return {
+            canImplement,
+            cls
+        }
+    },
+    get disableSubmit() {
+        return self.activityStatus === 'Report Approved'
+    },
+    get canFinishImplementing() {
+        return self.activityStatus === 'Ongoing'
+    },
+    get canAddReport() {
+        return self.activityStatus === 'Implemented'
+    },
+    get canViewAndEditReport() {
+        return self.activityStatus === 'Report Submitted'
+    },
+    get download() {
+        const store = getRoot(self);
+        const api = store.d2.Api.getApi();
+        const url = api.baseUrl;
+        return `${url}/events/files?eventUid=${self.reportId}&dataElementUid=yxGmEyvPfwl`;
+    }
+})).actions(self => ({
+
+    fetchTrackedInstances: flow(function* () {
+        const store = getRoot(self);
+        if (self.transactionCode !== '' && store && store.d2) {
+            const api = store.d2.Api.getApi();
+            const { trackedEntityInstances } = yield api.get(`trackedEntityInstances`, {
+                fields: '*',
+                program: store.plannedActivity.id,
+                ouMode: 'ALL',
+                filter: `XdmZ9lk11i4:EQ:${self.transactionCode}`
+            });
+
+            self.trackedEntityInstances = trackedEntityInstances;
+
+            const { enrollments } = trackedEntityInstances[0];
+            const { events } = enrollments[0];
+            const foundEvent = events.find(e => e.programStage === 'gCp6ffVmx0g');
+
+            if (foundEvent) {
+                self.currentReport = foundEvent.event
+            }
+        }
+    }),
+    afterCreate: flow(function* () {
+        yield self.fetchTrackedInstances();
+    }),
+    updateActivityStatus: flow(function* (status) {
+        const instances = self.trackedEntityInstances.map(({ orgUnit, trackedEntityInstance, trackedEntityType, attributes }) => {
+            attributes = attributes.map(a => {
+                if (a.attribute === 'GeIEoCBrKaW') {
+                    return { ...a, value: status }
+                }
+                return a
+            })
+
+            return {
+                orgUnit,
+                trackedEntityInstance,
+                trackedEntityType,
+                attributes
+            }
+
+        })
+        const store = getRoot(self);
+        const api = store.d2.Api.getApi();
+        const plannedActivity = store.plannedActivity;
+        const payload = {
+            trackedEntityInstances: instances
+        }
+        yield api.post('trackedEntityInstances', payload);
+        yield plannedActivity.refresh();
+    }),
+
+    addEvent: flow(function* (data) {
+        const api = getRoot(self).d2.Api.getApi();
+
+        const { programStage, ...others } = data;
+
+        self.loading = true;
+
+        const dataValues = Object.keys(others).map(dataElement => {
+            return { dataElement, value: data[dataElement] };
+        });
+
+        const events = self.trackedEntityInstances.map(tei => {
+            let event = {
+                event: self.reportIds[tei.trackedEntityInstance] || generateUid(),
+                eventDate: new Date().toISOString(),
+                status: 'COMPLETED',
+                completedDate: new Date().toISOString(),
+                program: tei.programOwners[0].program,
+                orgUnit: tei.orgUnit,
+                dataValues,
+                programStage,
+                trackedEntityInstance: tei.trackedEntityInstance
+            }
+            return event;
+        });
+
+        try {
+            yield api.post('events', { events });
+        } catch (error) {
+            console.error("Failed to fetch projects", error);
+            self.state = "error"
+        }
+        self.loading = false;
+    }),
+
+    updateEvent: flow(function* (data) {
+        const store = getRoot(self)
+        const api = store.d2.Api.getApi();
+        const currentIssue = store.issue.currentIssue;
+        const { program, programStage, orgUnit, event, trackedEntityInstance } = currentIssue;
+        for (const dataElement of keys(data)) {
+            yield api.update('events/' + event + '/' + dataElement, { program, programStage, orgUnit, trackedEntityInstance, dataValues: [{ dataElement, value: data[dataElement] }] })
+        }
+    }),
+
+    addIssue: flow(function* (data) {
+        const api = getRoot(self).d2.Api.getApi();
+
+        const { orgUnit, programStage, trackedEntityInstance, program, ...others } = data;
+
+        self.loading = true;
+
+        const dataValues = Object.keys(others).map(dataElement => {
+            return { dataElement, value: data[dataElement] };
+        });
+
+        const event = {
+            eventDate: new Date().toISOString(),
+            status: 'COMPLETED',
+            completedDate: new Date().toISOString(),
+            program,
+            orgUnit,
+            dataValues,
+            programStage,
+            trackedEntityInstance
+        }
+
+        try {
+            yield api.post('events', event);
+        } catch (error) {
+            console.error("Failed to fetch projects", error);
+            self.state = "error"
+        }
+        self.loading = false;
+    })
+}));
 
 
 export const Program = types.model('Program', {
@@ -584,102 +1109,110 @@ export const Program = types.model('Program', {
     currentInstance: '',
     currentOU: '',
     search: '',
-    attribute: ''
+    attribute: '',
+    activities: types.optional(types.array(FieldActivity), []),
+    currentActivity: types.optional(FieldActivity, {})
 }).views(self => ({
+    get pureColumns() {
+        const columns = ['le0A6qC3Oap', 'GeIEoCBrKaW', 'eN9jthkmMds', 'pyQEzpRRcqH'];
+        return self.programTrackedEntityAttributes.map(a => {
+            return {
+                title: a.trackedEntityAttribute.name,
+                key: a.trackedEntityAttribute.id,
+                dataIndex: a.trackedEntityAttribute.id
+            }
+        }).filter(c => columns.indexOf(c.key) !== -1);
+    },
     get columns() {
-        if (self.rows) {
-            const columns = self.programTrackedEntityAttributes.map(a => {
-                return a.trackedEntityAttribute.id
-            });
-            let cols = self.headers.map((a, i) => {
+        const store = getRoot(self);
+        const columns = ['le0A6qC3Oap', 'GeIEoCBrKaW', 'eN9jthkmMds', 'TINV7BqPh5p', 'VfDJnPvZzYL', 'pyQEzpRRcqH', 'ouname'];
+        if (self.activities.length > 0) {
+            let cols = self.programTrackedEntityAttributes.map(a => {
                 return {
-                    key: a.name,
-                    title: a.column,
-                    dataIndex: a.name,
-                    index: i,
+                    title: a.trackedEntityAttribute.name,
+                    key: a.trackedEntityAttribute.id,
+                    dataIndex: a.trackedEntityAttribute.id,
                     render: (text, row) => {
-                        if (a.name === 'GeIEoCBrKaW') {
+                        if (a.trackedEntityAttribute.id === 'GeIEoCBrKaW') {
                             return {
                                 props: {
                                     className: row.currentStatus.cls,
                                 },
-                                children: <div>{row.data[i] || row.currentStatus.cls}</div>,
+                                children: <div>{row.columnAttributes[a.trackedEntityAttribute.id]}</div>,
                             };
                         }
-                        return <div>{row.data[i]}</div>
+                        return <div>{row.columnAttributes[a.trackedEntityAttribute.id]}</div>
                     }
                 }
-            }).filter(h => {
-                return columns.indexOf(h.key) !== -1 || h.key === 'ouname'
-            });
-
-            if (self.id === 'lINGRWR9UFx') {
-                const store = getRoot(self);
-                const columns = ['le0A6qC3Oap', 'GeIEoCBrKaW', 'eN9jthkmMds', 'pyQEzpRRcqH', 'ouname'];
-                cols = cols.filter(c => columns.indexOf(c.key) !== -1)
-                cols = [...cols, {
-                    title: 'Actions',
-                    key: 'lINGRWR9UFx',
-                    render: (text, record) => {
-                        let l = [];
-                        if (record.currentStatus.canImplement) {
-                            l = [...l, <Menu.Item key="1" onClick={async () => await record.updateActivityStatus('Ongoing')}>
+            }).filter(c => columns.indexOf(c.key) !== -1);
+            cols = [...cols, {
+                title: 'Actions',
+                key: 'Actions',
+                render: (text, record) => {
+                    let l = [];
+                    if (record.currentStatus.canImplement) {
+                        l = [
+                            ...l,
+                            <Menu.Item key="1" onClick={async () => await record.updateActivityStatus('Ongoing')}>
                                 Start Implementing
-                            </Menu.Item>]
-                        }
-
-                        if (record.canFinishImplementing) {
-                            l = [...l, <Menu.Item key="2" onClick={async () => await record.updateActivityStatus('Implemented')}>
-                                Mark As Implemented
-                            </Menu.Item>]
-                        }
-                        if (record.canAddReport) {
-                            l = [...l, <Menu.Item key="3" onClick={() => {
-                                self.setRow(record);
-                                store.router.setView(views.activityDetails, { instance: record.data[0] })
-                            }}>
-                                Add Report
-                            </Menu.Item>]
-                        }
-                        if (record.canViewAndEditReport || record.disableSubmit) {
-                            l = [...l, <Menu.Item key="4" onClick={() => {
-                                self.setRow(record);
-                                store.router.setView(views.activityDetails, { instance: record.data[0] });
-                            }}>
-                                View Report
-                            </Menu.Item>]
-
-                            if (record.download) {
-                                l = [...l, <Menu.Item key="5">
-                                    <a href={record.download}>Download Report</a>
-                                </Menu.Item>]
-                            }
-
-                            if (!record.disableSubmit) {
-                                l = [...l, <Menu.Item key="6" onClick={async () => await record.updateActivityStatus('Report Approved')}>
-                                    Approve Report
-                                </Menu.Item>]
-                            }
-                        }
-                        const menu = (
-                            <Menu>
-                                {l.map(m => m)}
-                            </Menu>
-                        );
-                        return <Dropdown overlay={menu} trigger={['click']}>
-                            <Button type="link">
-                                <Icon type="down" />
-                            </Button>
-                        </Dropdown>
+                            </Menu.Item>,
+                            <Menu.Item key="7" onClick={async () => store.router.setView(views.editPlannedActivity, { instance: record.transactionCode })}>
+                                Edit Activity
+                            </Menu.Item>
+                        ]
                     }
-                }]
-            }
 
+                    if (record.canFinishImplementing) {
+                        l = [...l, <Menu.Item key="2" onClick={async () => await record.updateActivityStatus('Implemented')}>
+                            Mark As Implemented
+                        </Menu.Item>]
+                    }
+                    if (record.canAddReport) {
+                        l = [...l, <Menu.Item key="3" onClick={() => {
+                            self.setRow(record);
+                            store.router.setView(views.activityDetails, { instance: record.transactionCode })
+                        }}>
+                            Add Report
+                        </Menu.Item>]
+                    }
+                    if (record.canViewAndEditReport || record.disableSubmit) {
+                        l = [...l, <Menu.Item key="4" onClick={() => {
+                            self.setRow(record);
+                            store.router.setView(views.activityDetails, { instance: record.transactionCode });
+                        }}>
+                            View Summary Report
+                        </Menu.Item>]
+
+                        // if (record.download) {
+                        //     l = [...l, <Menu.Item key="5">
+                        //         <a href={record.download}>Download Uploaded Report</a>
+                        //     </Menu.Item>]
+                        // }
+
+                        if (!record.disableSubmit) {
+                            l = [...l, <Menu.Item key="6" onClick={async () => await record.updateActivityStatus('Report Approved')}>
+                                Approve Report
+                            </Menu.Item>]
+                        }
+                    }
+                    const menu = (
+                        <Menu>
+                            {l.map(m => m)}
+                        </Menu>
+                    );
+                    return <Dropdown overlay={menu} trigger={['click']}>
+                        <Button type="link">
+                            <Icon type="down" />
+                        </Button>
+                    </Dropdown>
+                }
+            }]
             return cols;
         }
         return []
     },
     get form() {
+        const mustDropDowns = ['dPEK5RaFqLx', 'vIlcCjuhlUG', 'le0A6qC3Oap']
         if (self.programTrackedEntityAttributes) {
             return self.programTrackedEntityAttributes.map(a => {
                 const { mandatory, valueType } = a;
@@ -690,7 +1223,7 @@ export const Program = types.model('Program', {
                     mandatory,
                     valueType,
                     hidden,
-                    optionSet: a.trackedEntityAttribute.optionSet
+                    optionSet: mustDropDowns.indexOf(a.trackedEntityAttribute.id) === -1 ? a.trackedEntityAttribute.optionSet : { options: [] }
                 }
             })
         }
@@ -730,19 +1263,18 @@ export const Program = types.model('Program', {
     const fetchAttributes = flow(function* () {
         const api = getRoot(self).d2.Api.getApi();
         self.loading = true;
+
         try {
-            const { headers, rows, metaData: { pager } } = yield api.get('trackedEntityInstances/query.json', {
-                query: self.search === '' ? '' : `LIKE:${self.search}`,
-                program: self.id,
-                totalPages: true,
+            const { listGrid: { rows }, pager } = yield api.get('sqlViews/SqR8Dood0q9/data.json', {
+                paging: true,
                 pageSize: self.pageSize,
-                order: self.sorter,
-                ouMode: 'ALL',
             });
-            self.rows = rows.map(r => {
-                return { data: r }
+            self.activities = rows.map(r => {
+                return {
+                    transactionCode: r[1],
+                    attributes: r[2].value
+                }
             });
-            self.headers = headers
             self.total = pager.total;
         } catch (error) {
             console.error("Failed to fetch projects", error);
@@ -769,27 +1301,26 @@ export const Program = types.model('Program', {
 
     const handleChange = flow(function* (pagination, filters, sorter) {
         self.loading = true;
-        const order = sorter.field && sorter.order ? `${sorter.field}:${sorter.order === 'ascend' ? 'asc' : 'desc'}` : 'created:desc';
-        const page = pagination.pageSize !== self.pageSize || order !== self.sorter ? 1 : pagination.current;
-        self.sorter = order;
+        // const order = sorter.field && sorter.order ? `${sorter.field}:${sorter.order === 'ascend' ? 'asc' : 'desc'}` : 'created:desc';
+        const page = pagination.pageSize !== self.pageSize ? 1 : pagination.current;
+        // self.sorter = order;
+        self.pageSize = pagination.pageSize
         self.page = page;
         const api = getRoot(self).d2.Api.getApi();
         try {
-            const { headers, rows, metaData: { pager } } = yield api.get('trackedEntityInstances/query.json', {
-                program: self.id,
-                totalPages: true,
+            const { listGrid: { rows }, pager } = yield api.get('sqlViews/SqR8Dood0q9/data.json', {
+                paging: true,
                 pageSize: self.pageSize,
-                order: self.sorter,
-                ouMode: 'ALL',
-                query: self.search === '' ? '' : `LIKE:${self.search}`,
                 page,
+            });
+            self.activities = rows.map(r => {
+                return {
+                    transactionCode: r[1],
+                    attributes: r[2].value
+                }
             });
             self.total = pager.total;
             self.pageSize = pager.pageSize;
-            self.rows = rows.map(r => {
-                return { data: r }
-            });
-            self.headers = headers
         } catch (error) {
             console.error("Failed to fetch projects", error);
             self.state = "error"
@@ -797,23 +1328,21 @@ export const Program = types.model('Program', {
         self.loading = false;
     });
 
-
     const refresh = flow(function* () {
         self.loading = true;
         const api = getRoot(self).d2.Api.getApi();
         try {
-            const { headers, rows } = yield api.get('trackedEntityInstances/query.json', {
-                program: self.id,
+            const { listGrid: { rows } } = yield api.get('sqlViews/SqR8Dood0q9/data.json', {
+                paging: true,
                 pageSize: self.pageSize,
-                order: self.sorter,
-                ouMode: 'ALL',
                 page: self.page,
-                query: self.search === '' ? '' : `LIKE:${self.search}`,
             });
-            self.rows = rows.map(r => {
-                return { data: r }
+            self.activities = rows.map(r => {
+                return {
+                    transactionCode: r[1],
+                    attributes: r[2].value
+                }
             });
-            self.headers = headers
         } catch (error) {
             console.error("Failed to fetch projects", error);
             self.state = "error"
@@ -865,69 +1394,39 @@ export const Program = types.model('Program', {
 
         self.loading = true;
 
-        const { organisationUnits, activity, trackedEntityInstance, enrollment, events, ...others } = data;
-
-        const attributes = Object.keys(others).map(attribute => {
-            return { attribute, value: data[attribute] };
-        });
+        const { organisationUnits, activity, enrollment, events, ...others } = data;
 
         const date = new Date().toISOString()
 
         const trackedEntityInstances = organisationUnits.map(orgUnit => {
-            let currentEnrollment = {
-                orgUnit,
-                program: self.id,
-                enrollmentDate: date,
-                incidentDate: date
-            }
-            if (enrollment) {
-                currentEnrollment = { ...currentEnrollment, enrollment }
-            }
+            const attributes = Object.keys(others).map(attribute => {
+                if (attribute === 'eN9jthkmMds') {
+                    return { attribute, value: orgUnit.dates[0].format('YYYY-MM-DD') };
+                } else if (attribute === 'pyQEzpRRcqH') {
+                    return { attribute, value: orgUnit.dates[1].format('YYYY-MM-DD') };
+                } else {
+                    return { attribute, value: data[attribute] };
+                }
+            });
             let tei = {
-                orgUnit,
+                orgUnit: orgUnit.ou,
                 trackedEntityType: self.trackedEntityType,
                 attributes,
-                enrollments: [currentEnrollment]
             }
 
-            if (trackedEntityInstance) {
-                tei = { ...tei, trackedEntityInstance }
-            }
-            return tei;
-        });
-
-        try {
-            yield api.post('trackedEntityInstances', { trackedEntityInstances });
-        } catch (error) {
-            console.error("Failed to fetch projects", error);
-            self.state = "error";
-
-        }
-        self.loading = false;
-    });
-
-
-    const updateTrackedEntityInstance = flow(function* (data) {
-        const api = getRoot(self).d2.Api.getApi();
-
-        self.loading = true;
-
-        const { organisationUnits, activity, trackedEntityInstance, enrollment, events, ...others } = data;
-
-        const attributes = Object.keys(others).map(attribute => {
-            return { attribute, value: data[attribute] };
-        });
-        const trackedEntityInstances = organisationUnits.map(orgUnit => {
-
-            let tei = {
-                orgUnit,
-                trackedEntityType: self.trackedEntityType,
-                attributes
+            if (orgUnit.trackedEntityInstance) {
+                tei = { ...tei, trackedEntityInstance: orgUnit.trackedEntityInstance }
+            } else {
+                const currentEnrollment = {
+                    orgUnit: orgUnit.ou,
+                    program: self.id,
+                    enrollmentDate: date,
+                    incidentDate: date
+                }
+                tei = { ...tei, enrollments: [currentEnrollment] }
             }
 
-            if (trackedEntityInstance) {
-                tei = { ...tei, trackedEntityInstance }
-            }
+
             return tei;
         });
 
@@ -963,7 +1462,6 @@ export const Program = types.model('Program', {
         setSearch,
         setCurrentInstance,
         setCurrentOU,
-        updateTrackedEntityInstance,
         setRow
     }
 

@@ -1,8 +1,8 @@
 import React from 'react';
 
-//models
 import { View } from '../modules/router';
 import { getParent } from 'mobx-state-tree'
+import shortid from 'shortid';
 
 //components
 import {
@@ -10,21 +10,24 @@ import {
     PlannedActivity,
     PlannedActivityForm,
     Activity,
-    ActivityForm,
+    IssueForm,
     ActivityDetails,
-    Action,
     Issue,
-    Report
 } from '../components';
-import { Row } from '../store/model/Baylor';
-
-
+import { FieldActivity } from '../store/model/Baylor';
 
 const views = {
     home: View.create({
         path: '/',
         name: 'home',
-        component: <Home />
+        component: <Home />,
+        hooks: {
+            async beforeEnter(self, params) {
+                const p = getParent(self.router);
+                p.setCurrentLocations(['10'])
+                await getParent(self.router).fetchInstances();
+            }
+        }
     }),
     plannedActivity: View.create({
         path: '/planned-activities',
@@ -32,6 +35,8 @@ const views = {
         component: <PlannedActivity />,
         hooks: {
             async beforeEnter(self, params) {
+                const p = getParent(self.router);
+                p.setCurrentLocations(['1'])
                 await getParent(self.router).plannedActivity.fetchAttributes();
             }
         }
@@ -43,12 +48,28 @@ const views = {
         hooks: {
             beforeEnter(self, params) {
                 const p = getParent(self.router);
-                p.plannedActivity.setHidden(['le0A6qC3Oap', 'GeIEoCBrKaW'])
+                p.plannedActivity.setHidden(['GeIEoCBrKaW', 'XdmZ9lk11i4']);
+                p.setCurrentLocations(['1'])
+                const r = FieldActivity.create({ transactionCode: shortid.generate() })
+                p.setCurrentActivity(r);
             }
         }
     }),
-
-
+    editPlannedActivity: View.create({
+        path: '/planned-activities/:instance',
+        name: 'editPlannedActivity',
+        component: <PlannedActivityForm />,
+        hooks: {
+            async beforeEnter(self, params) {
+                const p = getParent(self.router);
+                p.setCurrentLocations(['1'])
+                p.plannedActivity.setHidden(['GeIEoCBrKaW', 'XdmZ9lk11i4']);
+                const r = FieldActivity.create({ transactionCode: params.instance })
+                p.setCurrentActivity(r);
+                await p.currentActivity.fetchTrackedInstances();
+            }
+        }
+    }),
     activity: View.create({
         path: '/activity',
         name: 'activity',
@@ -56,17 +77,11 @@ const views = {
         hooks: {
             async beforeEnter(self, params) {
                 const p = getParent(self.router);
+                p.setCurrentLocations(['sub1','9'])
                 await p.activity.fetchEvents();
             }
         }
     }),
-    activityForm: View.create({
-        path: '/activity/add',
-        name: 'activityForm',
-        component: <ActivityForm />
-    }),
-
-
     activityDetails: View.create({
         path: '/activity-details/:instance',
         name: 'activityDetails',
@@ -74,13 +89,13 @@ const views = {
         hooks: {
             async beforeEnter(self, params) {
                 const p = getParent(self.router);
+                p.setCurrentLocations(['1'])
                 p.report.setHidden(['yxGmEyvPfwl']);
-                p.plannedActivity.setCurrentInstance(params.instance);
-                const r = Row.create({ data: [params.instance] })
-                p.setCurrentRow(r);
-                await p.currentRow.fetchEvents();
+                p.issue.setHidden(['b3KvFkSwZLn']);
+                const r = FieldActivity.create({ transactionCode: params.instance })
+                p.setCurrentActivity(r);
+                await p.currentActivity.fetchTrackedInstances();
                 await p.issue.fetchMetadata();
-                p.report.setInstance(params.instance);
             }
         }
     }),
@@ -91,31 +106,23 @@ const views = {
         hooks: {
             async beforeEnter(self, params) {
                 const p = getParent(self.router);
-                await p.issue.fetchEvents();
+                p.setCurrentLocations(['11'])
+                p.issue.setHidden(['b3KvFkSwZLn']);
+                await p.issue.fetchRawEvents();
             }
         }
     }),
-    actions: View.create({
-        path: '/actions',
-        name: 'actions',
-        component: <Action />,
+    issueForm: View.create({
+        path: '/issues/add',
+        name: 'issueForm',
+        component: <IssueForm />,
         hooks: {
             async beforeEnter(self, params) {
                 const p = getParent(self.router);
-                await p.action.fetchEvents();
+                p.issue.setHidden(['b3KvFkSwZLn']);
+                await p.issue.fetchRawEvents();
             }
         }
     }),
-    reports: View.create({
-        path: '/reports',
-        name: 'reports',
-        component: <Report />,
-        hooks: {
-            async beforeEnter(self, params) {
-                const p = getParent(self.router);
-                await p.report.fetchEvents();
-            }
-        }
-    })
 };
 export default views;

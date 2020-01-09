@@ -10,52 +10,49 @@ import {
     Button,
     Upload,
     Table,
-    Descriptions,
-    List,
-    Input,
-    Comment
+    notification
 } from 'antd';
 import { Link } from '../modules/router';
 import views from '../config/views';
-import { displayField } from './forms/forms';
+import { DisplayField } from './forms/forms';
 import * as layouts from './forms/utils';
 import { DrawerForm } from './forms/DrawerForm';
+import _, { keys, range, intersection, fromPairs } from 'lodash';
+import shortid from 'shortid';
+import moment from 'moment'
 
 
 const { Header, Content } = Layout;
-const { TextArea } = Input;
-
-const CommentList = ({ comments }) => (
-    <List
-        dataSource={comments}
-        header={`${comments.length} ${comments.length > 1 ? 'replies' : 'reply'}`}
-        itemLayout="horizontal"
-        renderItem={props => <Comment {...props} />}
-    />
-);
-
-const Editor = ({ onChange, onSubmit, submitting, value }) => (
-    <div>
-        <Form.Item>
-            <TextArea rows={4} onChange={onChange} value={value} />
-        </Form.Item>
-        <Form.Item>
-            <Button htmlType="submit" loading={submitting} onClick={onSubmit} type="primary">
-                Add Comment
-        </Button>
-        </Form.Item>
-    </div>
-);
-
 const BForm = ({ store, form }) => {
 
     const [expandedRowKeys, setExpandedRowKeys] = useState([]);
+    const issueForm = store.issue.form.filter(s => { return !/\d/.test(String(s.title)) });
+
     const onExpand = (expanded, record) => {
         if (expanded) {
             setExpandedRowKeys([record.event]);
         } else {
             setExpandedRowKeys([])
         }
+    }
+
+    const extractActions = (issue) => {
+        let found = [];
+        const issueKeys = keys(issue);
+        range(1, 11).forEach(i => {
+            const searchColumns = store.issue.form.filter(s => { return String(s.title).endsWith(i) });
+            const columnsKeys = searchColumns.map(c => c.key)
+            const both = intersection(issueKeys, columnsKeys)
+
+            if (both.length > 0) {
+                const action = searchColumns.map(column => {
+                    return [String(column.title).replace(/\d+/g, ''), issue[column.key]];
+                });
+                found = [...found, { ...issue, ...fromPairs(action), uid: shortid.generate() }];
+            }
+
+        });
+        return found;
     }
     const handleSubmit = e => {
         e.preventDefault();
@@ -67,31 +64,54 @@ const BForm = ({ store, form }) => {
                     BNoMKfDs0Oj: rest['BNoMKfDs0Oj'].format('YYYY-MM-DD'),
                     kc42dsL4xqA: rest['kc42dsL4xqA'].format('YYYY-MM-DD'),
                 }
-                await store.plannedActivity.addEvent({ ...rest, programStage: 'gCp6ffVmx0g', organisationUnits: [store.currentRow.event.orgUnit], trackedEntityInstance: store.currentRow.event.trackedEntityInstance });
-                await store.currentRow.updateActivityStatus('Report Submitted');
-                await store.currentRow.fetchEvents();
+                await store.currentActivity.addEvent({ ...rest, programStage: 'gCp6ffVmx0g' });
+                await store.currentActivity.updateActivityStatus('Report Submitted');
+                await store.currentActivity.fetchTrackedInstances();
+                notification.open({
+                    message: 'Report Submitted',
+                    description: 'Report has been successfully submitted',
+                    onClick: () => {
+                        console.log('Notification Clicked!');
+                    },
+                    placement: 'bottomRight'
+                });
             }
         });
     };
 
     const onSubmit = async (values) => {
-        values = {
-            ...values,
-            BEIor2SEmOp: values['BEIor2SEmOp'].format('YYYY-MM-DD')
-        }
-        await store.plannedActivity.addEvent({ ...values, programStage: 'qky1qGVPe7e', organisationUnits: [store.currentRow.event.orgUnit], trackedEntityInstance: store.currentRow.event.trackedEntityInstance });
-        await store.currentRow.fetchEvents();
+
+        let { instance, ...rest } = values;
+
+        const { orgUnit, trackedEntityInstance, program } = JSON.parse(instance);
+
+        const whatToSubmit = { ...rest, programStage: 'qky1qGVPe7e', orgUnit, trackedEntityInstance, program };
+
+        let final = _.pickBy(whatToSubmit, (value) => {
+            return value !== null && value !== undefined;
+        });
+
+        final = _.mapValues(final, (o) => {
+            if (o instanceof moment) {
+                return o.format('YYYY-MM-DD')
+            }
+            return o
+        });
+
+        await store.currentActivity.addIssue(final);
+        await store.currentActivity.fetchTrackedInstances();
         store.hideIssueDialog()
     }
 
     const onActionSubmit = async (values) => {
-        values = {
-            ...values,
-            SO9B1IUruRa: values['SO9B1IUruRa'].format('YYYY-MM-DD'),
-            XhzH8wqpiyo: values['XhzH8wqpiyo'].format('YYYY-MM-DD'),
-        }
-        await store.plannedActivity.addEvent({ ...values, programStage: 'eXOOIxW2cAZ', organisationUnits: [store.currentRow.event.orgUnit], trackedEntityInstance: store.currentRow.event.trackedEntityInstance });
-        await store.currentRow.fetchEvents()
+        values = _.mapValues(values, (o) => {
+            if (o instanceof moment) {
+                return o.format('YYYY-MM-DD')
+            }
+            return o
+        });
+        await store.currentActivity.updateEvent(values);
+        await store.currentActivity.fetchTrackedInstances();
         store.hideActionDialog()
     }
 
@@ -114,6 +134,41 @@ const BForm = ({ store, form }) => {
         });
         onSuccess("ok");
     };
+
+    const columns = [{
+        key: 'Action',
+        title: 'Action',
+        dataIndex: 'Action'
+    }, {
+        key: 'Action Description',
+        title: 'Action Description',
+        dataIndex: 'Action Description'
+    }, {
+        key: 'Action Start Date',
+        title: 'Action Start Date',
+        dataIndex: 'Action Start Date'
+    }, {
+        key: 'Action End Date',
+        title: 'Action End Date',
+        dataIndex: 'Action End Date'
+    }, {
+        key: 'Action Taken by',
+        title: 'Action Taken by',
+        dataIndex: 'Action Taken by'
+    }, {
+        key: 'Current Issue Status',
+        title: 'Current Issue Status',
+        dataIndex: 'Current Issue Status',
+        render: (text, row) => {
+            return {
+                props: {
+                    className: text,
+                },
+                children: <div>{text}</div>,
+            };
+        }
+    }]
+
     return (
         <div>
             <Header style={{ background: '#fff', paddingRight: 15, paddingLeft: 5, display: 'flex' }}>
@@ -135,15 +190,15 @@ const BForm = ({ store, form }) => {
                         <Card title="Report Details">
                             <Form {...layouts.formItemLayout} onSubmit={handleSubmit}>
                                 {store.report.form.map(s => {
-                                    if (store.currentRow.report[s.key]) {
-                                        return displayField(s, getFieldDecorator, { initialValue: store.currentRow.report[s.key] })
+                                    if (store.currentActivity.report[s.key]) {
+                                        return <DisplayField field={s} key={s.key} getFieldDecorator={getFieldDecorator} initialValue={store.currentActivity.report[s.key]} />
                                     }
-                                    return displayField(s, getFieldDecorator, {})
+                                    return <DisplayField field={s} key={s.key} getFieldDecorator={getFieldDecorator} />
                                 })}
                                 <Form.Item label="Upload" key="upload">
                                     {getFieldDecorator('upload', {
                                         valuePropName: 'fileList',
-                                        rules: [{ required: true, message: `Please upload report` }],
+                                        rules: [{ required: !store.currentActivity.report['yxGmEyvPfwl'], message: `Please upload report` }],
                                         getValueFromEvent: normFile,
                                     })(
                                         <Upload.Dragger name="files" customRequest={dummyRequest} multiple={false}>
@@ -154,14 +209,12 @@ const BForm = ({ store, form }) => {
                                             <p className="ant-upload-hint">Support for a single upload.</p>
                                         </Upload.Dragger>)}
                                 </Form.Item>
-                                <Form.Item {...layouts.tailFormItemLayout}>
-                                    <Button type="primary" htmlType="submit" size="large" disabled={store.currentRow.disableSubmit}>Submit Report</Button>
+                                <Form.Item {...layouts.tailFormItemLayout} style={{display:'flex'}}>
+                                    <Button type="primary" htmlType="submit" size="large" disabled={store.currentActivity.disableSubmit}>Submit Report</Button>&nbsp;&nbsp;
+                                    {store.currentActivity.reportId !== ''?<Button type="primary" size="large" href={store.currentActivity.download}><Icon type="download" /> Download Report</Button>:null}
+                                    
                                 </Form.Item>
                             </Form>
-                        </Card>
-                        &nbsp;
-                        <Card title="Report Comments">
-                            <pre>{JSON.stringify(store.currentRow.report, null, 2)}</pre>
                         </Card>
                     </Col>
 
@@ -170,41 +223,25 @@ const BForm = ({ store, form }) => {
                             <Table
                                 style={{ padding: 0 }}
                                 columns={store.issue.columns}
-                                dataSource={store.currentRow.issues}
+                                dataSource={store.currentActivity.allIssues}
                                 rowKey="event"
                                 pagination={false}
                                 expandedRowKeys={expandedRowKeys}
                                 onExpand={onExpand}
                                 expandedRowRender={record => {
-                                    return <Card>
-                                        <Descriptions title="Issue Details" size="small">
-                                            {store.issue.form.map((item, i) => <Descriptions.Item key={i} label={item.title}>{record[item.key]}</Descriptions.Item>)}
-                                        </Descriptions>
+                                    return <Card title="Actions">
+                                        <Table
+                                            rowKey="uid"
+                                            columns={columns}
+                                            dataSource={extractActions(record)}
+                                            pagination={false}
+                                        />
                                     </Card>
                                 }}
                             />
                         </Card>
-                        &nbsp;
-                        <Card title="Actions Taken" extra={<Button disabled={store.currentRow.issues.length === 0} onClick={store.showActionDialog} size="large">Add Action</Button>}>
-                            <Table
-                                style={{ padding: 0 }}
-                                columns={store.action.columns}
-                                dataSource={store.currentRow.actions}
-                                rowKey="event"
-                                pagination={false}
-                                expandedRowKeys={expandedRowKeys}
-                                onExpand={onExpand}
-                                expandedRowRender={record => {
-                                    return <Card>
-                                        <Descriptions title="Action Details" size="small">
-                                            {store.action.form.map((item, i) => <Descriptions.Item key={i} label={item.title}>{record[item.key]}</Descriptions.Item>)}
-                                        </Descriptions>
-                                    </Card>
-                                }}
-                            />
-                        </Card>
-                        <DrawerForm title="New Issue" visible={store.issueDialogOpen} formColumns={store.issue.form} onSubmit={onSubmit} onClose={store.hideIssueDialog} />
-                        <DrawerForm title="New Action" visible={store.actionDialogOpen} formColumns={store.action.form} onSubmit={onActionSubmit} onClose={store.hideActionDialog} />
+                        <DrawerForm title="New Issue" visible={store.issueDialogOpen} formColumns={issueForm} onSubmit={onSubmit} onClose={store.hideIssueDialog} hideLocation={false} />
+                        <DrawerForm title="New Action" visible={store.actionDialogOpen} formColumns={store.issue.actionForm} onSubmit={onActionSubmit} onClose={store.hideActionDialog} hideLocation={true} />
                     </Col>
                 </Row>
             </Content>

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
     Form,
     Input,
@@ -11,10 +11,12 @@ import moment from 'moment'
 const { Option } = Select;
 const { TextArea } = Input;
 
-const { Option: AutoOption } = AutoComplete
+const { Option: AutoOption } = AutoComplete;
+export const DisplayField = ({ field, getFieldDecorator, ...rest }) => {
 
+    const [searched, setSearched] = useState(field.optionSet ? field.optionSet.options : []);
+    const onSelect = rest.onSelect || null
 
-export const displayField = (field, getFieldDecorator, rest) => {
     if (!field) {
         return null
     }
@@ -32,6 +34,17 @@ export const displayField = (field, getFieldDecorator, rest) => {
     if (rest && rest.initialValue) {
         conf = { ...conf, initialValue: rest.initialValue }
     }
+
+    const placeholder = rest.placeholder || ''
+
+    const search = (val) => {
+        const filtered = field.optionSet.options.filter(o => {
+            return String(o.name).toLowerCase().includes(String(val).toLowerCase())
+        });
+
+        setSearched(filtered)
+    }
+
     switch (field.valueType) {
         case 'DATE':
             const { disabledDate } = others
@@ -62,20 +75,6 @@ export const displayField = (field, getFieldDecorator, rest) => {
                 rules: [{ required: field.mandatory, message: `Please input ${field.title}` }],
             }
             break;
-        // case 'FILE_RESOURCE':
-        //     const { dummyRequest } = others
-        //     f = <Upload.Dragger name="files" customRequest={dummyRequest} multiple={false}>
-        //         <p className="ant-upload-drag-icon">
-        //             <Icon type="inbox" />
-        //         </p>
-        //         <p className="ant-upload-text">Click or drag file to this area to upload</p>
-        //         <p className="ant-upload-hint">Support for a single upload.</p>
-        //     </Upload.Dragger>
-        //     conf = {
-        //         valuePropName: 'fileList',
-        //         getValueFromEvent: normFile,
-        //     }
-        //     break;
 
         default:
             conf = {
@@ -83,19 +82,31 @@ export const displayField = (field, getFieldDecorator, rest) => {
                 rules: [{ required: field.mandatory, message: `Please input ${field.title}` }],
             }
             if (field.optionSet) {
-                f = <Select size="large" style={{ width: '100%' }}>
-                    {field.optionSet.options.map(d => <Option value={d.code} key={d.code}>{d.name}</Option>)}
+                f = <Select
+                    showSearch
+                    style={style}
+                    defaultActiveFirstOption={false}
+                    showArrow={false}
+                    filterOption={false}
+                    onSearch={search}
+                    notFoundContent={null}
+                    size="large"
+                    onSelect={onSelect}
+                    placeholder={placeholder}
+                >
+                    {searched.map(d => <Option value={d.code} key={d.code}>{d.name}</Option>)}
                 </Select>
             } else {
                 f = <Input size="large" style={{ width: '100%' }} />
             }
     }
-    return <Form.Item label={field.title} key={field.key} style={style}>
-        {getFieldDecorator(field.key, conf)(f)}
-    </Form.Item>
+
+    return (
+        <Form.Item label={field.title} key={field.key} style={style}>
+            {getFieldDecorator(field.key, conf)(f)}
+        </Form.Item>
+    );
 }
-
-
 
 export const renderOption = (item) => {
     return (

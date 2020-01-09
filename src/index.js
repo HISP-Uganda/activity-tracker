@@ -105,6 +105,7 @@ init(config).then(d2 => {
     store.fetchUnits();
     store.loadOrgUnitGroups();
     store.loadOrgUnitLevels();
+    store.fetchSections();
     startRouter(store.router);
     ReactDOM.render(<Provider store={store}>
         <App d2={d2} />

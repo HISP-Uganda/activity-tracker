@@ -39,7 +39,7 @@ class App extends Component {
                 <div style={{ height: 48 }} />
                 <Layout style={{ height: '95vh' }}>
                     <Sider trigger={null} collapsible collapsed={store.settings.collapsed} width={256} theme="light">
-                        <Menu theme="light" defaultSelectedKeys={['1']} mode="inline">
+                        <Menu theme="light" selectedKeys={store.currentLocations} mode="inline">
                             <Menu.Item key="10">
                                 <Link router={store.router} view={views.home}>
                                     <Icon type="dashboard" />
@@ -56,60 +56,15 @@ class App extends Component {
                             <Menu.Item key="11">
                                 <Link router={store.router} view={views.issues}>
                                     <Icon type="ordered-list" />
-                                    <span>Activity Issues</span>
+                                    <span>Issues and Actions</span>
                                 </Link>
                             </Menu.Item>
-
-                            <Menu.Item key="12">
-                                <Link router={store.router} view={views.actions}>
-                                    <Icon type="reconciliation" />
-                                    <span>Issue Action</span>
-                                </Link>
-                            </Menu.Item>
-
-                            <Menu.Item key="13">
-                                <Link router={store.router} view={views.reports}>
-                                    <Icon type="file-word" />
-                                    <span>Activity Reports</span>
-                                </Link>
-                            </Menu.Item>
-
-
-
                             <SubMenu
                                 key="sub1"
                                 title={
                                     <span><Icon type="user" />Settings </span>
                                 }
                             >
-                                {/* <Menu.Item key="5">
-                                    <Link router={store.router} view={views.projects}>
-                                        <Icon type="project" />
-                                        <span>Projects</span>
-                                    </Link>
-                                </Menu.Item>
-
-                                <Menu.Item key="6">
-                                    <Link router={store.router} view={views.objectives}>
-                                        <Icon type="calculator" />
-                                        <span>Objectives</span>
-                                    </Link>
-                                </Menu.Item>
-
-                                <Menu.Item key="7">
-                                    <Link router={store.router} view={views.resultAreas}>
-                                        <Icon type="calculator" />
-                                        <span>Result Areas</span>
-                                    </Link>
-                                </Menu.Item>
-
-                                <Menu.Item key="8">
-                                    <Link router={store.router} view={views.outputs}>
-                                        <Icon type="calculator" />
-                                        <span>Output</span>
-                                    </Link>
-                                </Menu.Item> */}
-
                                 <Menu.Item key="9">
                                     <Link router={store.router} view={views.activity}>
                                         <Icon type="calculator" />

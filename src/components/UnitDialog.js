@@ -4,10 +4,9 @@ import React, { useState } from "react";
 import { inject, observer } from "mobx-react";
 import OrgUnitDialog from '@dhis2/d2-ui-org-unit-dialog';
 
-export const UnitDialog = inject("store")(observer(({ store, onUpdate }) => {
+export const UnitDialog = inject("store")(observer(({ store, onUpdate, selected, setSelected }) => {
 
     const [userOrgUnits, setUserOrgUnits] = useState([]);
-    const [selected, setSelected] = useState([]);
     const [group, setGroup] = useState([]);
     const [level, setLevel] = useState([]);
 
@@ -68,7 +67,7 @@ export const UnitDialog = inject("store")(observer(({ store, onUpdate }) => {
         <div>
             <div >
                 <Button ghost size="large" htmlType="button" type="primary" onClick={store.toggleDialog}>
-                    Select Activity Location
+                    Select Activity Sites
                 </Button>
             </div>
             {store.root &&

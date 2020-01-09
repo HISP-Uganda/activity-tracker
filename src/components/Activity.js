@@ -1,9 +1,10 @@
 import React from 'react';
 import { inject, observer } from "mobx-react";
-import { Card, Layout, Icon, Table } from 'antd';
-import { Link } from '../modules/router';
-import views from '../config/views';
+import { Card, Layout, Icon, Table, Input } from 'antd';
 const { Header, Content } = Layout;
+
+const { Search } = Input;
+
 
 export const Activity = inject("store")(observer(({ store }) => {
     return (
@@ -17,8 +18,13 @@ export const Activity = inject("store")(observer(({ store }) => {
                         style={{ fontSize: 24 }}
                     />
                 </div>
-                <div>
-                    <Link router={store.router} view={views.activityForm}><Icon type="plus-square" style={{ fontSize: 24 }} /></Link>
+                <div style={{ marginLeft: 'auto' }}>
+                    <Search
+                        size="large"
+                        placeholder="input search text"
+                        onSearch={store.plannedActivity.setSearch}
+                        style={{ width: 600 }}
+                    />
                 </div>
             </Header>
             <Content style={{ overflow: 'auto', padding: 10 }}>

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { inject, observer } from "mobx-react";
-import { Card, Layout, Icon, Table, Input, Descriptions } from 'antd';
+import { Card, Layout, Icon, Table, Input } from 'antd';
 import { Link } from '../modules/router';
 import views from '../config/views';
 
@@ -12,11 +12,33 @@ export const PlannedActivity = inject("store")(observer(({ store }) => {
     const [expandedRowKeys, setExpandedRowKeys] = useState([]);
     const onExpand = (expanded, record) => {
         if (expanded) {
-            setExpandedRowKeys([record.data[0]]);
+            setExpandedRowKeys([record.columnAttributes.XdmZ9lk11i4]);
         } else {
             setExpandedRowKeys([])
         }
     }
+    const columns = [{
+        key: 'orgUnitName',
+        title: 'Site',
+        index: 'orgUnitName',
+        render: (record) => {
+            return <div>{record.orgUnitName}</div>
+        }
+    }, {
+        key: 'eN9jthkmMds',
+        title: 'Activity Planned Start Date',
+        index: 'eN9jthkmMds',
+        render: (record) => {
+            return <div>{record.eN9jthkmMds}</div>
+        }
+    }, {
+        key: 'pyQEzpRRcqH',
+        title: 'Activity Planned End Date',
+        index: 'pyQEzpRRcqH',
+        render: (record) => {
+            return <div>{record.pyQEzpRRcqH}</div>
+        }
+    }]
     return (
         <div>
             <Header style={{ background: '#fff', paddingRight: 15, paddingLeft: 5, display: 'flex' }}>
@@ -45,17 +67,21 @@ export const PlannedActivity = inject("store")(observer(({ store }) => {
                     <Table
                         style={{ padding: 0 }}
                         columns={store.plannedActivity.columns}
-                        dataSource={store.plannedActivity.rows}
-                        rowKey={(record) => record.data[0]}
+                        dataSource={store.plannedActivity.activities}
+                        rowKey={(record) => record.columnAttributes.XdmZ9lk11i4}
                         onChange={store.plannedActivity.handleChange}
                         expandedRowKeys={expandedRowKeys}
                         onExpand={onExpand}
-                        size="small"
+                        size="middle"
                         expandedRowRender={record => {
                             return <Card>
-                                <Descriptions title="Activity Details" size="small">
-                                    {record.data.map((item, i) => <Descriptions.Item key={i} label={store.plannedActivity.headers[i].column}>{item}</Descriptions.Item>)}
-                                </Descriptions>
+                                <Table
+                                    style={{ padding: 0 }}
+                                    columns={columns}
+                                    dataSource={record.allInstances}
+                                    rowKey="trackedEntityInstance"
+                                    pagination={false}
+                                />
                             </Card>
                         }}
                         pagination={{

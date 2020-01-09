@@ -1,8 +1,9 @@
 import { types, flow } from "mobx-state-tree";
-
+import moment from 'moment';
 import UI from "./model/UI";
 import { RouterStore } from '../modules/router';
-import { Program, ProgramStage, Row } from "./model/Baylor";
+import { Program, ProgramStage, Row, FieldActivity } from "./model/Baylor";
+import { fromPairs } from 'lodash';
 
 
 export const Store = types
@@ -22,8 +23,14 @@ export const Store = types
         action: types.optional(ProgramStage, { id: 'eXOOIxW2cAZ' }),
         report: types.optional(ProgramStage, { id: 'gCp6ffVmx0g' }),
         currentRow: types.optional(Row, {}),
+        currentActivity: types.optional(FieldActivity, {}),
         issueDialogOpen: false,
         actionDialogOpen: false,
+        sections: types.optional(types.array(types.frozen()), []),
+        startDate: moment().subtract(1, 'weeks').startOf('week').format('YYYY-MM-DD'),
+        endDate: moment().subtract(1, 'weeks').endOf('week').format('YYYY-MM-DD'),
+        data: types.optional(types.frozen(), []),
+        currentLocations:types.optional(types.array(types.string),['10'])
     }).actions(self => {
         const fetchUnits = flow(function* () {
             self.loading = true;
@@ -42,8 +49,21 @@ export const Store = types
             self.loading = false;
         });
 
-        async function afterCreate() {
-        }
+        const fetchSections = flow(function* () {
+            self.loading = true;
+            try {
+                const api = self.d2.Api.getApi();
+                const { programStageSections } = yield api.get('programSections', {
+                    fields: 'id,name,sortOrder,dataElements[id,name]',
+                    paging: false,
+                });
+                self.sections = programStageSections
+            } catch (error) {
+                console.error("Failed to fetch projects", error);
+                self.state = "error"
+            }
+            self.loading = false;
+        });
 
         const toggleDialog = () => {
             self.open = !self.open
@@ -80,6 +100,7 @@ export const Store = types
         const showActionDialog = () => self.actionDialogOpen = true;
         const hideActionDialog = () => self.actionDialogOpen = false;
         const setCurrentRow = (row) => self.currentRow = row;
+        const setCurrentLocations = (row) => self.currentLocations = row;
 
         const setD2 = (d2) => {
             self.d2 = d2
@@ -107,11 +128,130 @@ export const Store = types
             } else {
                 self.users = []
             }
-        })
+        });
+
+        const fetchCurrentActivity = flow(function* (code) {
+            const api = self.d2.Api.getApi();
+            self.loading = true;
+            try {
+                const { listGrid: { rows } } = yield api.get('sqlViews/cQkRtgHShh1/data.json', {
+                    paging: false,
+                    var: `code:${code}`
+                });
+                self.currentActivity = {
+                    transactionCode: rows[0][1],
+                    attributes: rows[0][2].value
+                }
+            } catch (error) {
+                console.error("Failed to fetch projects", error);
+                self.state = "error"
+            }
+            self.loading = false;
+        });
+        const queryInstances = flow(function* (query) {
+            const api = self.d2.Api.getApi();
+            self.loading = true;
+            try {
+                const { rows } = yield api.get('trackedEntityInstances/query.json', {
+                    paging: false,
+                    program: 'lINGRWR9UFx',
+                    query: `LIKE:${query}`,
+                    ouMode: 'ALL'
+                });
+                if (rows.length > 0) {
+                    const { trackedEntityInstances } = yield api.get('trackedEntityInstances', {
+                        paging: false,
+                        fields: '*',
+                        program: 'lINGRWR9UFx',
+                        trackedEntityInstance: rows.map(r => r[0]).join(';'),
+                        ouMode: 'ALL'
+                    });
+                    self.data = trackedEntityInstances.map(({ attributes, enrollments, ...rest }) => {
+                        attributes = fromPairs(attributes.map(a => [a.displayName, a.value]))
+                        const { events } = enrollments[0];
+                        const foundEvent = events.find(e => e.programStage === 'gCp6ffVmx0g');
+                        let event = {};
+                        if (foundEvent) {
+                            event = fromPairs(foundEvent.dataValues.map(dv => [dv.dataElement, dv.value]));
+                        }
+                        return { ...rest, ...attributes, ...event };
+
+                    });
+                } else {
+                    self.data = [];
+                }
+
+            } catch (error) {
+                console.error("Failed to fetch projects", error);
+                self.state = "error"
+            }
+            self.loading = false;
+        });
+        const fetchInstances = flow(function* () {
+            const api = self.d2.Api.getApi();
+            self.loading = true;
+            try {
+                const { trackedEntityInstances } = yield api.get('trackedEntityInstances', {
+                    paging: false,
+                    fields: '*',
+                    program: 'lINGRWR9UFx',
+                    filter: `eN9jthkmMds:GE:${self.startDate}&filter=pyQEzpRRcqH:LE:${self.endDate}`,
+                    ouMode: 'ALL'
+                });
+                self.data = trackedEntityInstances.map(({ attributes, enrollments, ...rest }) => {
+                    attributes = fromPairs(attributes.map(a => [a.displayName, a.value]))
+                    const { events } = enrollments[0];
+                    const foundEvent = events.find(e => e.programStage === 'gCp6ffVmx0g');
+                    let event = {};
+                    if (foundEvent) {
+                        event = fromPairs(foundEvent.dataValues.map(dv => [dv.dataElement, dv.value]));
+                    }
+                    return { ...rest, ...attributes, ...event };
+
+                });
+            } catch (error) {
+                console.error("Failed to fetch projects", error);
+                self.state = "error"
+            }
+            self.loading = false;
+        });
+
+        const searchInstances = flow(function* (field, value) {
+            const api = self.d2.Api.getApi();
+            self.loading = true;
+            try {
+                const { trackedEntityInstances } = yield api.get('trackedEntityInstances', {
+                    paging: false,
+                    fields: '*',
+                    program: 'lINGRWR9UFx',
+                    filter: `${field}:EQ:${value}`,
+                    ouMode: 'ALL'
+                });
+                self.data = trackedEntityInstances.map(({ attributes, enrollments, ...rest }) => {
+                    attributes = fromPairs(attributes.map(a => [a.displayName, a.value]))
+                    const { events } = enrollments[0];
+                    const foundEvent = events.find(e => e.programStage === 'gCp6ffVmx0g');
+                    let event = {};
+                    if (foundEvent) {
+                        event = fromPairs(foundEvent.dataValues.map(dv => [dv.dataElement, dv.value]));
+                    }
+                    return { ...rest, ...attributes, ...event };
+
+                });
+            } catch (error) {
+                console.error("Failed to fetch projects", error);
+                self.state = "error"
+            }
+            self.loading = false;
+        });
+        const setCurrentActivity = val => self.currentActivity = val;
+        const setDates = val => {
+            self.startDate = val[0];
+            self.endDate = val[1]
+        }
         return {
             setD2,
             onShowSizeChange,
-            afterCreate,
             setForm,
             setCurrentProgram,
             setCurrentTracker,
@@ -124,7 +264,15 @@ export const Store = types
             hideIssueDialog,
             showActionDialog,
             hideActionDialog,
-            setCurrentRow
+            setCurrentRow,
+            fetchCurrentActivity,
+            setCurrentActivity,
+            fetchSections,
+            fetchInstances,
+            setDates,
+            queryInstances,
+            searchInstances,
+            setCurrentLocations
         }
 
     });
