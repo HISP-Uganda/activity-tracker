@@ -11,7 +11,6 @@ import {
     DatePicker
 } from 'antd';
 import moment from 'moment';
-import shortid from 'shortid';
 import { fromPairs, uniq } from 'lodash';
 import { Link } from '../../modules/router';
 import views from '../../config/views';
@@ -179,9 +178,9 @@ const ProjectF = ({ store, form }) => {
                                 case 'dPEK5RaFqLx':
                                     return <DisplayField key={f.key} field={f} getFieldDecorator={getFieldDecorator} onSelect={onSelectObjective} initialValue={store.currentActivity.activityAttributes[f.key]} placeholder="Type some text to see suggestions" />
                                 case 'vIlcCjuhlUG':
-                                    return <DisplayField key={f.key} field={f} getFieldDecorator={getFieldDecorator} onSelect={onSelectResultArea} initialValue={store.currentActivity.activityAttributes[f.key]} placeholder="Type some text to see suggestions"/>
+                                    return <DisplayField key={f.key} field={f} getFieldDecorator={getFieldDecorator} onSelect={onSelectResultArea} initialValue={store.currentActivity.activityAttributes[f.key]} placeholder="Type some text to see suggestions" />
                                 case 'le0A6qC3Oap':
-                                    return <DisplayField key={f.key} field={f} getFieldDecorator={getFieldDecorator} initialValue={store.currentActivity.activityAttributes[f.key]} placeholder="Type some text to see suggestions"/>
+                                    return <DisplayField key={f.key} field={f} getFieldDecorator={getFieldDecorator} initialValue={store.currentActivity.activityAttributes[f.key]} placeholder="Type some text to see suggestions" />
                                 default:
                                     return <DisplayField key={f.key} field={f} getFieldDecorator={getFieldDecorator} initialValue={store.currentActivity.activityAttributes[f.key]} />
                             }

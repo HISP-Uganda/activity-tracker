@@ -39,6 +39,13 @@ export const PlannedActivity = inject("store")(observer(({ store }) => {
             return <div>{record.pyQEzpRRcqH}</div>
         }
     }]
+
+    const search = async (value, event) => {
+        if (value === '') {
+            await store.plannedActivity.reset()
+        }
+        await store.plannedActivity.setSearch(value)
+    }
     return (
         <div>
             <Header style={{ background: '#fff', paddingRight: 15, paddingLeft: 5, display: 'flex' }}>
@@ -57,8 +64,9 @@ export const PlannedActivity = inject("store")(observer(({ store }) => {
                     <Search
                         size="large"
                         placeholder="input search text"
-                        onSearch={store.plannedActivity.setSearch}
+                        onSearch={search}
                         style={{ width: 600 }}
+                        allowClear
                     />
                 </div>
             </Header>

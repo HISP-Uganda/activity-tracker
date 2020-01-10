@@ -1111,7 +1111,8 @@ export const Program = types.model('Program', {
     search: '',
     attribute: '',
     activities: types.optional(types.array(FieldActivity), []),
-    currentActivity: types.optional(FieldActivity, {})
+    currentActivity: types.optional(FieldActivity, {}),
+    sqlView: 'SqR8Dood0q9'
 }).views(self => ({
     get pureColumns() {
         const columns = ['le0A6qC3Oap', 'GeIEoCBrKaW', 'eN9jthkmMds', 'pyQEzpRRcqH'];
@@ -1257,22 +1258,34 @@ export const Program = types.model('Program', {
 
     get firstProgramStage() {
         return self.programStages[0]
+    },
+
+    get params() {
+        if (self.sqlView === 'o5qmS27vgC3') {
+            return {
+                paging: true,
+                pageSize: self.pageSize,
+                page: self.page,
+                var: `search:${self.search}`
+            }
+        }
+        return {
+            paging: true,
+            pageSize: self.pageSize,
+            page: self.page
+        }
     }
 
 })).actions(self => {
     const fetchAttributes = flow(function* () {
         const api = getRoot(self).d2.Api.getApi();
         self.loading = true;
-
         try {
-            const { listGrid: { rows }, pager } = yield api.get('sqlViews/SqR8Dood0q9/data.json', {
-                paging: true,
-                pageSize: self.pageSize,
-            });
+            const { listGrid: { rows }, pager } = yield api.get(`sqlViews/${self.sqlView}/data.json`, self.params);
             self.activities = rows.map(r => {
                 return {
-                    transactionCode: r[1],
-                    attributes: r[2].value
+                    transactionCode: r[0],
+                    attributes: r[1].value
                 }
             });
             self.total = pager.total;
@@ -1308,15 +1321,11 @@ export const Program = types.model('Program', {
         self.page = page;
         const api = getRoot(self).d2.Api.getApi();
         try {
-            const { listGrid: { rows }, pager } = yield api.get('sqlViews/SqR8Dood0q9/data.json', {
-                paging: true,
-                pageSize: self.pageSize,
-                page,
-            });
+            const { listGrid: { rows }, pager } = yield api.get(`sqlViews/${self.sqlView}/data.json`, self.params);
             self.activities = rows.map(r => {
                 return {
-                    transactionCode: r[1],
-                    attributes: r[2].value
+                    transactionCode: r[0],
+                    attributes: r[1].value
                 }
             });
             self.total = pager.total;
@@ -1332,15 +1341,11 @@ export const Program = types.model('Program', {
         self.loading = true;
         const api = getRoot(self).d2.Api.getApi();
         try {
-            const { listGrid: { rows } } = yield api.get('sqlViews/SqR8Dood0q9/data.json', {
-                paging: true,
-                pageSize: self.pageSize,
-                page: self.page,
-            });
+            const { listGrid: { rows } } = yield api.get(`sqlViews/${self.sqlView}/data.json`, self.params);
             self.activities = rows.map(r => {
                 return {
-                    transactionCode: r[1],
-                    attributes: r[2].value
+                    transactionCode: r[0],
+                    attributes: r[1].value
                 }
             });
         } catch (error) {
@@ -1441,14 +1446,23 @@ export const Program = types.model('Program', {
     });
 
     const setSearch = flow(function* (search) {
+        self.sqlView = 'o5qmS27vgC3'
         self.search = search;
+        yield self.fetchAttributes();
+    });
+
+    const reset = flow(function* () {
+        self.sqlView = 'SqR8Dood0q9'
+        self.page = 1;
+        self.pageSize = 10;
+        console.log(self.params);
         yield self.fetchAttributes();
     });
 
     const setCurrentInstance = val => self.currentInstance = val;
     const setCurrentOU = val => self.currentOU = val;
     const setRow = val => self.row = val;
-
+    const setSqlView = val => self.sqlView = val;
 
     return {
         afterCreate,
@@ -1462,7 +1476,9 @@ export const Program = types.model('Program', {
         setSearch,
         setCurrentInstance,
         setCurrentOU,
-        setRow
+        setRow,
+        setSqlView,
+        reset
     }
 
 });
